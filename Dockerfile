@@ -28,3 +28,5 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > /init-rustup.sh 
     sh /init-rustup.sh -y --default-toolchain stable --profile minimal --target riscv32i-unknown-none-elf && \
     ~/.cargo/bin/rustup show && \
     rm /init-rustup.sh
+
+WORKDIR /app

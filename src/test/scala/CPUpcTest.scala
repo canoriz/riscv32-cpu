@@ -21,7 +21,9 @@ class CPUStructTest extends AnyFlatSpec with ChiselScalatestTester {
   }
   */
 
-  for (f <- new File("src/test/scala/resources/memory").listFiles.filter(f => f.isFile && f.getName.endsWith(".memory"))) {
+  for (f <- new File("src/test/scala/resources/memory"
+      ).listFiles.filter(f => f.isFile && f.getName.endsWith(".memory"
+      ))) {
     val p = f.getPath
     it should p in {
       test(new Top(p)) { c =>

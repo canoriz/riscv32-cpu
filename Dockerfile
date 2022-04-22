@@ -29,4 +29,13 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > /init-rustup.sh 
     ~/.cargo/bin/rustup show && \
     rm /init-rustup.sh
 
+# Instaall Verilator
+RUN apt-get update && \
+    apt-get install libfl2 libfl-dev
+WORKDIR /opt
+RUN git clone http://git.veripool.org/git/verilator && cd verilator && \
+    git pull && git checkout v4.016 && \
+    autoconf && ./configure && make && make test && make install
+
 WORKDIR /app
+CMD bash

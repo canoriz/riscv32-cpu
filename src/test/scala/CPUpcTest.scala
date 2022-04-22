@@ -10,12 +10,21 @@ import Consts._
 
 class CPUStructTest extends AnyFlatSpec with ChiselScalatestTester {
   behavior of "mycpu"
-
-
+  /*
+  it should "run" in {
+    test(new Top("src/test/scala/resources/memory/m16k_1.memory")).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+      // c is an instance of Top
+      while (!c.io.exit.peek().litToBoolean) {
+        c.clock.step(1)
+      }
+    }
+  }
+  */
+  
   for (f <- new File("src/test/scala/resources/memory").listFiles.filter(f => f.isFile && f.getName.endsWith(".memory"))) {
     val p = f.getPath
     it should p in {
-      test(new Top(p)) { c =>
+      test(new Top(p)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
         // c is an instance of Top
         while (!c.io.exit.peek().litToBoolean) {
           c.clock.step(1)
@@ -23,4 +32,5 @@ class CPUStructTest extends AnyFlatSpec with ChiselScalatestTester {
       }
     }
   }
+  
 }

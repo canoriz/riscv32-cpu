@@ -40,10 +40,10 @@ class Core extends Module {
   io.dmem.addr  := pc
   io.dmem.wen   := false.B
   io.dmem.wdata := pc
-  printf(p"instruction is 0x${Hexadecimal(io.imem.inst)}\n")
+  printf(p"pc is 0x${Hexadecimal(pc)}\ninstruction is 0x${Hexadecimal(io.imem.inst)}\n")
 
   pc := pc + 4.U(WORD_LEN.W)
-  io.exit := (pc === 48.U(WORD_LEN.W))
+  io.exit := (pc >= 48.U(WORD_LEN.W))
 
   io.gp := regfile(3)
   io.pc := pc

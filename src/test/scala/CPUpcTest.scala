@@ -24,7 +24,7 @@ class CPUStructTest extends AnyFlatSpec with ChiselScalatestTester {
   for (f <- new File("src/test/scala/resources/memory").listFiles.filter(f => f.isFile && f.getName.endsWith(".memory"))) {
     val p = f.getPath
     it should p in {
-      test(new Top(p)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+      test(new Top(p)) { c =>
         // c is an instance of Top
         while (!c.io.exit.peek().litToBoolean) {
           c.clock.step(1)

@@ -5,6 +5,7 @@ import chisel3.util._
 
 object Consts {
   val WORD_LEN      = 32
+  val INST_BYTES    = 4.U(WORD_LEN.W)
   val START_ADDR    = 0.U(WORD_LEN.W)
   val BUBBLE        = 0x00000013.U(WORD_LEN.W)  // [ADDI x0,x0,0] = NOP = BUBBLE (2.4)
   val UNIMP         = "x_c0001073".U(WORD_LEN.W) // [CSRRW x0, cycle, x0] p.159

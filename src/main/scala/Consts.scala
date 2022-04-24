@@ -60,6 +60,12 @@ object Consts {
   val MEN_SCALAR = 1.U(MEN_LEN.W) // Scalar
   val MEN_VECTOR = 2.U(MEN_LEN.W) // Vector
 
+// Choose byte
+  val BS_LEN     = 2
+  val BS_B       = 0.U(BS_LEN.W) // Byte
+  val BS_H       = 1.U(BS_LEN.W) // Half word
+  val BS_W       = 2.U(BS_LEN.W) // Word
+
   val REN_LEN    = 2
   val REN_NONE   = 0.U(REN_LEN.W)
   val REN_SCALAR = 1.U(REN_LEN.W) // Scalar

@@ -17,13 +17,12 @@ import Instructions._
 
 // IF
 class FetchStage {
-  val data_hazard_flag = Wire(Bool()) // True when data hazard occurs at EX stage
   // IF/ID pipeline registers
   val reg_pc = RegInit(0.U(WORD_LEN.W))
   // default instruction is NOP
   val reg_inst = RegInit(BUBBLE)
 
-  def connect(imem: ImemPortIo, exe: ExecuteStage, csr: Mem[UInt]) = {
+  def connect(imem: ImemPortIo, decode: DecodeStage, exe: ExecuteStage, csr: Mem[UInt]) = {
     // Connect program counter to address output. This output is connected to memory to fetch the
     // address as instruction
     val pc = RegInit(START_ADDR)
@@ -34,8 +33,6 @@ class FetchStage {
     val pc_this_cycle = Wire(UInt(WORD_LEN.W))
     val pc_next_cycle = Wire(UInt(WORD_LEN.W))
     val inst = Wire(UInt(WORD_LEN.W))
-    inst := imem.inst
-    imem.addr := pc_this_cycle
     pc_this_cycle := MuxCase(pc, Seq(
       exe.br_flag  -> exe.br_target, // Branch instructions write back br_target address to program counter
       exe.jmp_flag -> exe.alu_out, // Jump instructions calculate the jump address by ALU
@@ -43,16 +40,17 @@ class FetchStage {
       // trap_vector address. Note that there is no OS on this CPU.
       //(inst === ECALL) -> csr(0x305),
     ))
-
-    pc_next_cycle := Mux(data_hazard_flag, pc_this_cycle, pc_this_cycle + INST_BYTES)
+    pc_next_cycle := Mux(decode.stall_flag, pc_this_cycle, pc_this_cycle + INST_BYTES)
 
     // Save to IF/ID registers
     // set to current pc address in Fetch stage
     // when data_hazard, Decode stage will exec NOP
     reg_pc := pc_this_cycle
-    pc := pc_next_cycle
+    pc     := pc_next_cycle
 
-    reg_inst := inst
+    inst      := imem.inst
+    imem.addr := pc_this_cycle
+    reg_inst  := inst
 
     printf(p"IF: pc=0x${Hexadecimal(pc)} inst=0x${Hexadecimal(inst)}\n")
 
@@ -71,41 +69,69 @@ class FetchStage {
     //   │ (X+8)│ (X+4)│(X->Y)│
     //   └──┬───┴──┬───┴──────┘
     //      ▼      ▼
+    // Reload instuction at Y
     //   ┌──────┬──────┬──────┐
-    //   │ NOP  │ NOP  │JUMP X│         CYCLE = C+1
-    //   │      │      │(X->Y)│
+    //   │INST P│ NOP  │JUMP X│         CYCLE = C+1
+    //   │ (Y)  │      │(X->Y)│
     //   └──────┴──────┴──────┘
     //   ┌──────┬──────┬──────┬──────┐
-    //   │INST P│ NOP  │ NOP  │JUMP X│  CYCLE = C+2
-    //   │ (Y)  │      │      │(X->Y)│
+    //   │INST Q│INST P│ NOP  │JUMP X│  CYCLE = C+2
+    //   │ (Y+4)│ (Y)  │      │(X->Y)│
     //   └──────┴──────┴──────┴──────┘
     //
     //
     // On data hazard:
-    //
-    // To fetch the register data which is now being calculated at EX stage in IF stage, IF and ID
-    // must wait for the data being written back to the register. The data will be forwarded to IF
+    // Register data hazard
+    // In IF stage, to fetch the register data which is now being calculated at EX stage, waiting in MEM stage and
+    // writing back in WB stage. Try the best to forward data from EX, MEM and WB stage.
+    //  The data will be forwarded to IF
     // and ID at MEM.
     //
-    //      IF     ID     EX     MEM
-    //   ┌──────┬──────┬──────┐
-    //   │INST B│INST A│INST C│         CYCLE = C
-    //   │ (X+8)│ (X+4)│ (X)  │
-    //   └┬─────┴┬─────┴──────┘
-    //    │keep  │keep
-    //   ┌▼─────┐▼─────┬──────┬──────┐
-    //   │INST B│INST A│ NOP  │INST C│  CYCLE = C+1
-    //   │ (X+8)│ (X+4)│      │ (X)  │
-    //   └──────┴──▲───┴──────┴──┬───┘
-    //             └─────────────┘
-    //                 forward
+    // When RAW (Read After Write) happens, data will be forwarded
+    // Normally, the data to be writed is stored is computed at EX stage in ALU.
+    //
+    //      IF     ID     EX     MEM    WB
+    //   ┌──────┬──────┬──────┬──────┬──────┐
+    //   │INST E│INST D│INST C│INST B│INST A│  CYCLE = C
+    //   │(X+16)│(X+12)│ (X+8)│ (X+4)│ (X)  │
+    //   └──────┴──▲───┴──▼───┴──▼───┴──▼───┘
+    //             └──────┴──────┴──────┘
+    //                   forward
+    //
+    //   ┌──────┬──────┬──────┬──────┬──────┐
+    //   │INST F│INST E│INST D│INST C│INST B│  CYCLE = C+1
+    //   │(X+20)│(X+16)│(X+12)│ (X+8)│ (X+4)│
+    //   └──────┴──────┴──────┴──────┴──────┘
+    //
+    // However, sometimes, data can not be computed at EX stage.
+    // For example, read register after LOAD:
+    //   load x1 <-- 0x123456
+    //   add  x3 <-- x2, x1
+    //
+    //      IF     ID     EX     MEM    WB
+    //   ┌──────┬──────┬──────┬──────┬──────┐
+    //   │INST E│INST D│ LOAD │INST B│INST A│  CYCLE = C
+    //   │(X+16)│(X+12)│ (X+8)│ (X+4)│ (X)  │
+    //   └─┬────┴─┬┬───┴───┬──┴──────┴──────┘
+    //     │      │└───┬───┘
+    //     │      │ harzard
+    //     │      │
+    //     │keep  │keep
+    //     │      │
+    //   ┌─▼────┬─▼────┬──────┬──────┬──────┐
+    //   │INST E│INST D│ NOP  │ LOAD │INST B│  CYCLE = C+1
+    //   │(X+16)│(X+12)│      │ (X+8)│ (X+4)│
+    //   └──────┴───▲──┴──────┴───┬──┴──────┘
+    //              └─────────────┘
+    //                  forward
     //
   }
 }
 
 // ID
 class DecodeStage {
-  val inst = Wire(UInt(WORD_LEN.W))
+  val inst       = Wire(UInt(WORD_LEN.W))
+  val stall_flag = Wire(Bool())
   // ID/EX pipeline registers
   val reg_pc            = RegInit(0.U(WORD_LEN.W))
   val reg_wb_addr       = RegInit(0.U(ADDR_LEN.W))
@@ -119,38 +145,17 @@ class DecodeStage {
   val reg_wb_sel        = RegInit(0.U(WB_SEL_LEN.W))
   val reg_csr_addr      = RegInit(0.U(CSR_ADDR_LEN.W))
   val reg_csr_cmd       = RegInit(0.U(CSR_LEN.W))
+  val reg_byte_sel      = RegInit(0.U(WORD_LEN.W))
+  val reg_load_flag     = RegInit(false.B)
+  val reg_load_unsigned = RegInit(false.B)
   val reg_imm_i_sext    = RegInit(0.U(WORD_LEN.W))
   val reg_imm_s_sext    = RegInit(0.U(WORD_LEN.W))
   val reg_imm_b_sext    = RegInit(0.U(WORD_LEN.W))
   val reg_imm_u_shifted = RegInit(0.U(WORD_LEN.W))
   val reg_imm_z_uext    = RegInit(0.U(WORD_LEN.W))
 
-  def connectStallFlag(prev: FetchStage) = {
-    // rs1_addr and rs2_addr in connect() are not available because they are connected from inst and
-    // inst wire is connected to stall_flag wire. Separate wires are necessary.
-    val rs1_addr = prev.reg_inst(19, 15)
-    val rs2_addr = prev.reg_inst(24, 20)
-
-    // stall_flag outputs true signal when data hazard occurs in RS1 or RS2 at EX stage.
-    /*
-    prev.stall_flag := (
-      reg_rf_wen === REN_SCALAR &&
-      rs1_addr =/= 0.U &&
-      rs1_addr === reg_wb_addr
-    ) || (
-      reg_rf_wen === REN_SCALAR &&
-      rs2_addr =/= 0.U &&
-      rs2_addr === reg_wb_addr
-    )
-    */
-    // never stall
-    prev.data_hazard_flag := false.B
-  }
-
   // gr: general register file
   def connect(prev: FetchStage, exe: ExecuteStage, mem: MemStage, gr: Mem[UInt]) = {
-    connectStallFlag(prev)
-
     // Spec 2.2 Base Instruction Formats
     //
     //  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
@@ -172,11 +177,22 @@ class DecodeStage {
     // not to execute it.
     // exe.br_flag || exe.jmp_flag is branch hazard
     // prev.data_hazard
-    inst := Mux(exe.br_flag || exe.jmp_flag || prev.data_hazard_flag, BUBBLE, prev.reg_inst)
 
+    val prev_rs1_addr = prev.reg_inst(19, 15)
+    val prev_rs2_addr = prev.reg_inst(24, 20)
+    val wb_addr = inst(11, 7) // rd
+    // Check rs1, rs2 read after load
+    val rs1_RAL = (prev_rs1_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR && reg_load_flag)
+    val rs2_RAL = (prev_rs2_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR && reg_load_flag)
+    stall_flag := rs1_RAL || rs2_RAL // True when read after load occurs at EX stage, IF read, EX load
+
+    inst := Mux(
+      (exe.br_flag || exe.jmp_flag || stall_flag),
+      BUBBLE,
+      prev.reg_inst
+    )
     val rs1_addr = inst(19, 15)
     val rs2_addr = inst(24, 20)
-    val wb_addr = inst(11, 7) // rd
 
     // MuxCase priority from first to last
     val rs1_data = MuxCase(gr(rs1_addr), Seq(
@@ -202,14 +218,6 @@ class DecodeStage {
       (rs2_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR) -> mem.reg_wb_data
     ))
 
-    // debug purpose
-    val rs1_hazard = (rs1_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
-      (rs1_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
-      (rs1_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U)
-    val rs2_hazard = (rs2_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
-      (rs2_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
-      (rs2_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U)
-    printf(p"[Debug] ID: rs1_addr=${rs1_addr} reg_wb_addr=${reg_wb_addr}\n")
 
     // Spec 2.6: The effective address is obtained by adding register rs1 to the sign-extended 12-bit offset.
     // sext 12bit value to 32bit value.
@@ -237,65 +245,84 @@ class DecodeStage {
     val imm_j = Cat(inst(31), inst(19, 12), inst(20), inst(30, 21))
     val imm_j_sext = Cat(Fill(11, imm_j(19)), imm_j, 0.U(1.U)) // Set LSB to zero
 
+    // Decode imm of Zicsr I-type instruction
+    val imm_z = inst(19, 15)
+    val imm_z_uext = Cat(Fill(27, 0.U), imm_z) // for CSR instructions 5 bit u-imm
+
     // Decode operand sources and memory/register write back behavior
-    val List(exe_fun, op1_sel, op2_sel, mem_wen, rf_wen, wb_sel, csr_cmd) = ListLookup(
+    val List(exe_fun, op1_sel, op2_sel, mem_wen, rf_wen, wb_sel, csr_cmd, byte_sel) = ListLookup(
       inst,
-      List(ALU_NONE, OP1_RS1, OP2_RS2, MEN_NONE, REN_NONE, WB_NONE, CSR_NONE),
+      List(ALU_NONE, OP1_RS1, OP2_RS2, MEN_NONE, REN_NONE, WB_NONE, CSR_NONE, BS_W),
       Array(
         // 2.3 Integer Computational Instructions
-        ADDI      -> List(ALU_ADD,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] + sext(imm_i)
-        SLTI      -> List(ALU_SLT,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] <s imm_i_sext
-        SLTIU     -> List(ALU_SLTU, OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] <u imm_i_sext
-        ANDI      -> List(ALU_AND,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] & sext(imm_i)
-        ORI       -> List(ALU_OR ,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] | sext(imm_i)
-        XORI      -> List(ALU_XOR,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] ^ sext(imm_i)
-        SLLI      -> List(ALU_SLL,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] << imm_i_sext(4,0)
-        SRLI      -> List(ALU_SRL,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] >>u imm_i_sext(4,0)
-        SRAI      -> List(ALU_SRA,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] >>s imm_i_sext(4,0)
+        ADDI      -> List(ALU_ADD,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] + sext(imm_i)
+        SLTI      -> List(ALU_SLT,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] <s imm_i_sext
+        SLTIU     -> List(ALU_SLTU, OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] <u imm_i_sext
+        ANDI      -> List(ALU_AND,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] & sext(imm_i)
+        ORI       -> List(ALU_OR ,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] | sext(imm_i)
+        XORI      -> List(ALU_XOR,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] ^ sext(imm_i)
+        SLLI      -> List(ALU_SLL,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] << imm_i_sext(4,0)
+        SRLI      -> List(ALU_SRL,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] >>u imm_i_sext(4,0)
+        SRAI      -> List(ALU_SRA,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] >>s imm_i_sext(4,0)
         // 2.4 Integer Register-Register Operations
-        ADD       -> List(ALU_ADD,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] + x[rs2]
-        SLT       -> List(ALU_SLT,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] <s x[rs2]
-        SLTU      -> List(ALU_SLTU, OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] <u x[rs2]
-        AND       -> List(ALU_AND,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] & x[rs2]
-        OR        -> List(ALU_OR,   OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] | x[rs2]
-        XOR       -> List(ALU_XOR,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] ^ x[rs2]
-        SLL       -> List(ALU_SLL,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] << x[rs2](4,0)
-        SRL       -> List(ALU_SRL,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] >>u x[rs2](4,0)
-        SUB       -> List(ALU_SUB,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] - x[rs2]
-        SRA       -> List(ALU_SRA,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // x[rs1] >>s x[rs2](4,0)
-        LUI       -> List(ALU_ADD,  OP1_NONE, OP2_IMU,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // sext(imm_u[31:12] << 12)
-        AUIPC     -> List(ALU_ADD,  OP1_PC,   OP2_IMU,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE), // PC + sext(imm_u[31:12] << 12)
+        ADD       -> List(ALU_ADD,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] + x[rs2]
+        SLT       -> List(ALU_SLT,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] <s x[rs2]
+        SLTU      -> List(ALU_SLTU, OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] <u x[rs2]
+        AND       -> List(ALU_AND,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] & x[rs2]
+        OR        -> List(ALU_OR,   OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] | x[rs2]
+        XOR       -> List(ALU_XOR,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] ^ x[rs2]
+        SLL       -> List(ALU_SLL,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] << x[rs2](4,0)
+        SRL       -> List(ALU_SRL,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] >>u x[rs2](4,0)
+        SUB       -> List(ALU_SUB,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] - x[rs2]
+        SRA       -> List(ALU_SRA,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // x[rs1] >>s x[rs2](4,0)
+        LUI       -> List(ALU_ADD,  OP1_NONE, OP2_IMU,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // sext(imm_u[31:12] << 12)
+        AUIPC     -> List(ALU_ADD,  OP1_PC,   OP2_IMU,  MEN_NONE,   REN_SCALAR, WB_ALU,   CSR_NONE, BS_W), // PC + sext(imm_u[31:12] << 12)
         // 2.5 Control Transfer Instructions
-        BEQ       -> List(BR_BEQ,   OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE), // x[rs1] === x[rs2] then PC+sext(imm_b)
-        BNE       -> List(BR_BNE,   OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE), // x[rs1] =/= x[rs2] then PC+sext(imm_b)
-        BGE       -> List(BR_BGE,   OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE), // x[rs1] >=s x[rs2] then PC+sext(imm_b)
-        BGEU      -> List(BR_BGEU,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE), // x[rs1] >=u x[rs2] then PC+sext(imm_b)
-        BLT       -> List(BR_BLT,   OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE), // x[rs1] <s x[rs2]  then PC+sext(imm_b)
-        BLTU      -> List(BR_BLTU,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE), // x[rs1] <u x[rs2]  then PC+sext(imm_b)
-        JAL       -> List(ALU_ADD,  OP1_PC,   OP2_IMJ,  MEN_NONE,   REN_SCALAR, WB_PC,    CSR_NONE), // x[rd] <- PC+4 and PC+sext(imm_j)
-        JALR      -> List(ALU_JALR, OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_PC,    CSR_NONE), // x[rd] <- PC+4 and (x[rs1]+sext(imm_i))&~1
+        BEQ       -> List(BR_BEQ,   OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W), // x[rs1] === x[rs2] then PC+sext(imm_b)
+        BNE       -> List(BR_BNE,   OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W), // x[rs1] =/= x[rs2] then PC+sext(imm_b)
+        BGE       -> List(BR_BGE,   OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W), // x[rs1] >=s x[rs2] then PC+sext(imm_b)
+        BGEU      -> List(BR_BGEU,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W), // x[rs1] >=u x[rs2] then PC+sext(imm_b)
+        BLT       -> List(BR_BLT,   OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W), // x[rs1] <s x[rs2]  then PC+sext(imm_b)
+        BLTU      -> List(BR_BLTU,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W), // x[rs1] <u x[rs2]  then PC+sext(imm_b)
+        JAL       -> List(ALU_ADD,  OP1_PC,   OP2_IMJ,  MEN_NONE,   REN_SCALAR, WB_PC,    CSR_NONE, BS_W), // x[rd] <- PC+4 and PC+sext(imm_j)
+        JALR      -> List(ALU_JALR, OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_PC,    CSR_NONE, BS_W), // x[rd] <- PC+4 and (x[rs1]+sext(imm_i))&~1
         // 2.6 Load and Store Instructions
-        LW        -> List(ALU_ADD,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_MEM,   CSR_NONE), // x[rs1] + sext(imm_i)
-        SW        -> List(ALU_ADD,  OP1_RS1,  OP2_IMS,  MEN_SCALAR, REN_NONE,   WB_NONE,  CSR_NONE), // x[rs1] + sext(imm_s)
+        LB        -> List(ALU_ADD,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_MEM,   CSR_NONE, BS_B), // x[rs1] + sext(imm_i)
+        LH        -> List(ALU_ADD,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_MEM,   CSR_NONE, BS_H), // x[rs1] + sext(imm_i)
+        LW        -> List(ALU_ADD,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_MEM,   CSR_NONE, BS_W), // x[rs1] + sext(imm_i)
+        LBU       -> List(ALU_ADD,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_MEM,   CSR_NONE, BS_B), // x[rs1] + sext(imm_i)
+        LHU       -> List(ALU_ADD,  OP1_RS1,  OP2_IMI,  MEN_NONE,   REN_SCALAR, WB_MEM,   CSR_NONE, BS_H), // x[rs1] + sext(imm_i)
+        SB        -> List(ALU_ADD,  OP1_RS1,  OP2_IMS,  MEN_SCALAR, REN_NONE,   WB_NONE,  CSR_NONE, BS_B), // x[rs1] + sext(imm_s)
+        SH        -> List(ALU_ADD,  OP1_RS1,  OP2_IMS,  MEN_SCALAR, REN_NONE,   WB_NONE,  CSR_NONE, BS_H), // x[rs1] + sext(imm_s)
+        SW        -> List(ALU_ADD,  OP1_RS1,  OP2_IMS,  MEN_SCALAR, REN_NONE,   WB_NONE,  CSR_NONE, BS_W), // x[rs1] + sext(imm_s)
         // 2.7 Memory Ordering Instructions
         // Currently, no Out-of-Order Instructions, FENCE FENCE.TSO no effect at regfile, mem and order
-        FENCE     -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,   CSR_NONE),
-        FENCE_TSO -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,   CSR_NONE),
+        FENCE     -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,   CSR_NONE, BS_W),
+        FENCE_TSO -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,   CSR_NONE, BS_W),
         // 2.8 Environment Call and Breakpoints
-        ECALL     -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,  CSR_E),
+        ECALL     -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,   CSR_E,    BS_W),
         // EBREAK
         // 9.1 "Zicsr", Control and Status Register (CSR) Instructions
         // "Zicsr" is I-type
         /*
-        CSRRW   -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W), // CSRs[csr] <- x[rs1]
-        CSRRWI  -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W), // CSRs[csr] <- uext(imm_z)
-        CSRRS   -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S), // CSRs[csr] <- CSRs[csr] | x[rs1]
-        CSRRSI  -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S), // CSRs[csr] <- CSRs[csr] | uext(imm_z)
-        CSRRC   -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C), // CSRs[csr] <- CSRs[csr]&~x[rs1]
-        CSRRCI  -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C), // CSRs[csr] <- CSRs[csr]&~uext(imm_z)
+        CSRRW     -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W), // CSRs[csr] <- x[rs1]
+        CSRRWI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W), // CSRs[csr] <- uext(imm_z)
+        CSRRS     -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S), // CSRs[csr] <- CSRs[csr] | x[rs1]
+        CSRRSI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S), // CSRs[csr] <- CSRs[csr] | uext(imm_z)
+        CSRRC     -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C), // CSRs[csr] <- CSRs[csr]&~x[rs1]
+        CSRRCI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C), // CSRs[csr] <- CSRs[csr]&~uext(imm_z)
         */
       ),
     )
+
+    val load_flag = MuxCase(false.B, Seq(
+      (inst === LB)   -> true.B,
+      (inst === LH)   -> true.B,
+      (inst === LW)   -> true.B,
+      (inst === LBU)  -> true.B,
+      (inst === LHU)  -> true.B,
+    ))
+    val load_unsigned = (inst === LBU || inst === LHU)
 
     // Determine 1st operand data signal
     val op1_data = MuxCase(0.U(WORD_LEN.W), Seq(
@@ -343,7 +370,19 @@ class DecodeStage {
     //reg_csr_addr      := csr_addr
     reg_csr_cmd       := csr_cmd
     reg_mem_wen       := mem_wen
+    reg_byte_sel      := byte_sel
+    reg_load_flag     := load_flag
+    reg_load_unsigned := load_unsigned
 
+
+    // DEBUG forward
+    val rs1_hazard = (rs1_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
+      (rs1_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
+      (rs1_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U)
+    val rs2_hazard = (rs2_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
+      (rs2_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
+      (rs2_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U)
+    printf(p"[Debug] ID: rs1_addr=${rs1_addr} reg_wb_addr=${reg_wb_addr}\n")
     printf(p"""ID: pc=0x${Hexadecimal(prev.reg_pc)}
       inst=0x${Hexadecimal(inst)}
           rs1=${rs1_data} rs2=${rs2_data}
@@ -521,7 +560,7 @@ class Core extends Module {
   val mem = new MemStage()
   val wb = new WriteBackStage()
 
-  fetch.connect(io.imem, execute, csr_regfile)
+  fetch.connect(io.imem, decode, execute, csr_regfile)
   decode.connect(fetch, execute, mem, regfile)
   execute.connect(decode)
   mem.connect(io.dmem, execute, decode, csr_regfile)

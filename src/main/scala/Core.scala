@@ -399,19 +399,21 @@ class ExecuteStage {
   val alu_out = Wire(UInt(WORD_LEN.W))
 
   // EX/MEM pipeline registers
-  val reg_pc         = RegInit(0.U(WORD_LEN.W))
-  val reg_wb_addr    = RegInit(0.U(ADDR_LEN.W))
-  val reg_op1_data   = RegInit(0.U(WORD_LEN.W))
-  val reg_rs1_data   = RegInit(0.U(WORD_LEN.W))
-  val reg_rs2_data   = RegInit(0.U(WORD_LEN.W))
-  val reg_mem_wen    = RegInit(0.U(MEN_LEN.W))
-  val reg_rf_wen     = RegInit(0.U(REN_LEN.W))
-  val reg_wb_sel     = RegInit(0.U(WB_SEL_LEN.W))
-  val reg_csr_addr   = RegInit(0.U(CSR_ADDR_LEN.W))
-  val reg_csr_cmd    = RegInit(0.U(CSR_LEN.W))
-  val reg_imm_i_sext = RegInit(0.U(WORD_LEN.W))
-  val reg_imm_z_uext = RegInit(0.U(WORD_LEN.W))
-  val reg_alu_out    = RegInit(0.U(WORD_LEN.W))
+  val reg_pc            = RegInit(0.U(WORD_LEN.W))
+  val reg_wb_addr       = RegInit(0.U(ADDR_LEN.W))
+  val reg_op1_data      = RegInit(0.U(WORD_LEN.W))
+  val reg_rs1_data      = RegInit(0.U(WORD_LEN.W))
+  val reg_rs2_data      = RegInit(0.U(WORD_LEN.W))
+  val reg_mem_wen       = RegInit(0.U(MEN_LEN.W))
+  val reg_rf_wen        = RegInit(0.U(REN_LEN.W))
+  val reg_wb_sel        = RegInit(0.U(WB_SEL_LEN.W))
+  val reg_csr_addr      = RegInit(0.U(CSR_ADDR_LEN.W))
+  val reg_csr_cmd       = RegInit(0.U(CSR_LEN.W))
+  val reg_imm_i_sext    = RegInit(0.U(WORD_LEN.W))
+  val reg_imm_z_uext    = RegInit(0.U(WORD_LEN.W))
+  val reg_alu_out       = RegInit(0.U(WORD_LEN.W))
+  val reg_byte_sel      = RegInit(0.U(BS_LEN))
+  val reg_load_unsigned = RegInit(false.B)
 
   def connect(prev: DecodeStage) = {
     // Arithmetic Logic Unit process arithmetic/logical calculations for each instruction.
@@ -449,19 +451,21 @@ class ExecuteStage {
     jmp_flag := prev.reg_wb_sel === WB_PC
 
     // Save EX states for next stage
-    reg_pc         := prev.reg_pc
-    reg_op1_data   := prev.reg_op1_data
-    reg_rs1_data   := prev.reg_rs1_data
-    reg_rs2_data   := prev.reg_rs2_data
-    reg_wb_addr    := prev.reg_wb_addr
-    reg_alu_out    := alu_out
-    reg_rf_wen     := prev.reg_rf_wen
-    reg_wb_sel     := prev.reg_wb_sel
-    reg_csr_addr   := prev.reg_csr_addr
-    reg_csr_cmd    := prev.reg_csr_cmd
-    reg_imm_i_sext := prev.reg_imm_i_sext
-    reg_imm_z_uext := prev.reg_imm_z_uext
-    reg_mem_wen    := prev.reg_mem_wen
+    reg_pc            := prev.reg_pc
+    reg_op1_data      := prev.reg_op1_data
+    reg_rs1_data      := prev.reg_rs1_data
+    reg_rs2_data      := prev.reg_rs2_data
+    reg_wb_addr       := prev.reg_wb_addr
+    reg_alu_out       := alu_out
+    reg_rf_wen        := prev.reg_rf_wen
+    reg_wb_sel        := prev.reg_wb_sel
+    reg_csr_addr      := prev.reg_csr_addr
+    reg_csr_cmd       := prev.reg_csr_cmd
+    reg_imm_i_sext    := prev.reg_imm_i_sext
+    reg_imm_z_uext    := prev.reg_imm_z_uext
+    reg_mem_wen       := prev.reg_mem_wen
+    reg_byte_sel      := prev.reg_byte_sel
+    reg_load_unsigned := prev.reg_load_unsigned
 
     printf(p"EX: pc=0x${Hexadecimal(prev.reg_pc)} wb_addr=${prev.reg_wb_addr} op1=0x${Hexadecimal(prev.reg_op1_data)} op2=0x${Hexadecimal(prev.reg_op2_data)} alu_out=0x${Hexadecimal(alu_out)} jmp=${jmp_flag}\n")
   }
@@ -478,7 +482,14 @@ class MemStage {
   def connect(dmem: DmemPortIo, prev: ExecuteStage, decode: DecodeStage, csr: Mem[UInt]) = {
     dmem.addr := prev.reg_alu_out // Always output data to memory regardless of instruction
     dmem.wen := prev.reg_mem_wen // mem_wen is integer and here it is implicitly converted to bool
-    dmem.wdata := prev.reg_rs2_data
+    dmem.wdata := MuxCase(prev.reg_rs2_data, Seq(
+      (prev.reg_byte_sel === BS_B) -> (
+        dmem.rdata | prev.reg_rs2_data(7,0)  // load byte unsigned
+      ),
+      (prev.reg_byte_sel === BS_H) -> (
+        dmem.rdata | prev.reg_rs2_data(15,0) // load half word unsigned
+      )
+    ))
 
     /*
     // Handle CSR instructions
@@ -505,8 +516,18 @@ class MemStage {
     */
 
     // By default, write back the ALU result to register (wb_sel == WB_ALU)
+    val mem_read_ext = MuxCase(dmem.rdata, Seq(
+      (prev.reg_byte_sel === BS_B) -> Mux(prev.reg_load_unsigned,
+        dmem.rdata & 0x000000ff.U,                        // load byte unsigned
+        Cat(Fill(24, dmem.rdata(7)),  dmem.rdata(7,0))    // load byte signed
+      ),
+      (prev.reg_byte_sel === BS_H) -> Mux(prev.reg_load_unsigned,
+        dmem.rdata & 0x0000ffff.U,                        // load half word unsigned
+        Cat(Fill(16, dmem.rdata(15)), dmem.rdata(15,0))   // load half word signed
+      )
+    ))
     wb_data := MuxCase(prev.reg_alu_out, Seq(
-      (prev.reg_wb_sel === WB_MEM) -> dmem.rdata, // Loaded data from memory
+      (prev.reg_wb_sel === WB_MEM) -> mem_read_ext, // Loaded data from memory
       (prev.reg_wb_sel === WB_PC) -> (prev.reg_pc + 4.U(WORD_LEN.W)), // Jump instruction stores the next pc (pc+4) to x[rd]
       //(prev.reg_wb_sel === WB_CSR) -> csr_rdata, // CSR instruction write back CSRs[csr]
       //(prev.reg_wb_sel === WB_VL) -> vl, // vsetvli, vsetivli, vsetvl

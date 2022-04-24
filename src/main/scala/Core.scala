@@ -279,12 +279,13 @@ class DecodeStage {
         SW        -> List(ALU_ADD,  OP1_RS1,  OP2_IMS,  MEN_SCALAR, REN_NONE,   WB_NONE,  CSR_NONE), // x[rs1] + sext(imm_s)
         // 2.7 Memory Ordering Instructions
         // Currently, no Out-of-Order Instructions, FENCE FENCE.TSO no effect at regfile, mem and order
-        FENCE     -> List(ALU_ADD,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_NONE,   CSR_NONE),
-        FENCE_TSO -> List(ALU_ADD,  OP1_RS1,  OP2_RS2,  MEN_NONE,   REN_SCALAR, WB_NONE,   CSR_NONE),
+        FENCE     -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,   CSR_NONE),
+        FENCE_TSO -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,   CSR_NONE),
         // 2.8 Environment Call and Breakpoints
         ECALL     -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,  CSR_E),
         // EBREAK
         // 9.1 "Zicsr", Control and Status Register (CSR) Instructions
+        // "Zicsr" is I-type
         /*
         CSRRW   -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W), // CSRs[csr] <- x[rs1]
         CSRRWI  -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W), // CSRs[csr] <- uext(imm_z)

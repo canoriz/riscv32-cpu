@@ -383,7 +383,7 @@ class DecodeStage {
       (rs2_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
       (rs2_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U)
     printf(p"[Debug] ID: rs1_addr=${rs1_addr} reg_wb_addr=${reg_wb_addr}\n")
-    printf(p"""ID: pc=0x${Hexadecimal(prev.reg_pc)}
+    printf(p"""ID: pc=0x${Hexadecimal(prev.reg_pc)} asm ${DbgDecoder.decode(inst, prev.reg_pc)}
       inst=0x${Hexadecimal(inst)}
           rs1=${rs1_data} rs2=${rs2_data}
       data_hazard=${rs1_hazard || rs2_hazard}

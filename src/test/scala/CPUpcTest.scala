@@ -26,10 +26,11 @@ class CPUStructTest extends AnyFlatSpec with ChiselScalatestTester {
       ))) {
     val p = f.getPath
     it should p in {
-      test(new Top(p)) { c =>
-        // c is an instance of Top
-        while (!c.io.exit.peek().litToBoolean) {
-          c.clock.step(1)
+      test(new Top(p)) { t =>
+        // t is an instance of Top
+        while (!t.io.exit.peek().litToBoolean) {
+          t.core.fetch.stall_flag.expect(false.B)
+          t.clock.step(1)
         }
       }
     }

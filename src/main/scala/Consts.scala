@@ -10,7 +10,26 @@ object Consts {
   val BUBBLE        = 0x00000013.U(WORD_LEN.W)  // [ADDI x0,x0,0] = NOP = BUBBLE (2.4)
   val UNIMP         = "x_c0001073".U(WORD_LEN.W) // [CSRRW x0, cycle, x0] p.159
   val ADDR_LEN      = 5 // rs1,rs2,wb
+
   val CSR_ADDR_LEN  = 12
+  // Main trap setup. priv spec p.10
+  val CSR_MSTATUS     = 0x300.U(CSR_ADDR_LEN.W)
+  val CSR_MISA        = 0x301.U(CSR_ADDR_LEN.W)
+  val CSR_MEDELEG     = 0x302.U(CSR_ADDR_LEN.W)
+  val CSR_MIDELEG     = 0x303.U(CSR_ADDR_LEN.W)
+  val CSR_MIE         = 0x304.U(CSR_ADDR_LEN.W)
+  val CSR_MTVEC       = 0x305.U(CSR_ADDR_LEN.W)
+  val CSR_MCOUNTEREN  = 0x306.U(CSR_ADDR_LEN.W)
+  val CSR_MSTATUSH    = 0x310.U(CSR_ADDR_LEN.W)
+  // Main trap handling
+  val CSR_MSCRATCH    = 0x340.U(CSR_ADDR_LEN.W)
+  val CSR_MEPC        = 0x341.U(CSR_ADDR_LEN.W)
+  val CSR_MCAUSE      = 0x342.U(CSR_ADDR_LEN.W)
+  val CSR_MTVAL       = 0x343.U(CSR_ADDR_LEN.W)
+  val CSR_MIP         = 0x344.U(CSR_ADDR_LEN.W)
+  val CSR_MTINST      = 0x34a.U(CSR_ADDR_LEN.W)
+  val CSR_MTVAL2      = 0x34b.U(CSR_ADDR_LEN.W)
+
   val VLEN          = 128
   val LMUL_LEN      = 2
   val SEW_LEN       = 11
@@ -89,11 +108,11 @@ object Consts {
   val MW_HU  = 4.U(MW_LEN.W)
   val MW_BU  = 5.U(MW_LEN.W)
 
-  val CSR_LEN  = 3
-  val CSR_NONE = 0.U(CSR_LEN.W)
-  val CSR_W    = 1.U(CSR_LEN.W) // Write
-  val CSR_S    = 2.U(CSR_LEN.W) // Set bits
-  val CSR_C    = 3.U(CSR_LEN.W) // Clear bits
-  val CSR_E    = 4.U(CSR_LEN.W) // Exception (ECALL)
-  val CSR_V    = 5.U(CSR_LEN.W)
+  val CSR_LEN   = 3
+  val CSR_NONE  = 0.U(CSR_LEN.W)
+  val CSR_W     = 1.U(CSR_LEN.W) // Write
+  val CSR_S     = 2.U(CSR_LEN.W) // Set bits
+  val CSR_C     = 3.U(CSR_LEN.W) // Clear bits
+  val CSR_ECALL = 4.U(CSR_LEN.W) // Exception (ECALL)
+  val CSR_V     = 5.U(CSR_LEN.W)
 }

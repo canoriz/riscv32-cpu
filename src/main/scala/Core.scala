@@ -141,10 +141,11 @@ class DecodeStage {
   val reg_rs2_data      = RegInit(0.U(WORD_LEN.W))
   val reg_exe_fun       = RegInit(0.U(EXE_FUN_LEN.W))
   val reg_mem_wen       = RegInit(0.U(MEN_LEN.W))
-  val reg_rf_wen        = RegInit(0.U(REN_LEN.W))
+  val reg_rf_wen        = RegInit(0.U(REN_LEN.W)) // regfile write enable
   val reg_wb_sel        = RegInit(0.U(WB_SEL_LEN.W))
   val reg_csr_addr      = RegInit(0.U(CSR_ADDR_LEN.W))
   val reg_csr_cmd       = RegInit(0.U(CSR_LEN.W))
+  val reg_csr_old_data  = RegInit(0.U(WORD_LEN.W))
   val reg_byte_sel      = RegInit(0.U(WORD_LEN.W))
   val reg_load_flag     = RegInit(false.B)
   val reg_load_unsigned = RegInit(false.B)
@@ -155,7 +156,7 @@ class DecodeStage {
   val reg_imm_z_uext    = RegInit(0.U(WORD_LEN.W))
 
   // gr: general register file
-  def connect(prev: FetchStage, exe: ExecuteStage, mem: MemStage, gr: Mem[UInt]) = {
+  def connect(prev: FetchStage, exe: ExecuteStage, mem: MemStage, gr: Mem[UInt], csr: Mem[UInt]) = {
     // Spec 2.2 Base Instruction Formats
     //
     //  31      30 29 28 27 26 25 24 23 22 21   20   19 18 17 16 15 14 13 12 11 10 9 8     7   6 5 4 3 2 1 0
@@ -193,31 +194,6 @@ class DecodeStage {
     )
     val rs1_addr = inst(19, 15)
     val rs2_addr = inst(24, 20)
-
-    // MuxCase priority from first to last
-    val rs1_data = MuxCase(gr(rs1_addr), Seq(
-      // The value of register #0 is always zero
-      (rs1_addr === 0.U) -> 0.U(WORD_LEN.W),
-      // Forward data from EX, MEM and WB stage
-      // Forward from EX stage
-      (rs1_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR) -> exe.alu_out,
-      // Forward data from MEM stage to avoid data hazard. The same as above.
-      (rs1_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR) -> exe.reg_alu_out,
-      // Forward data from WB stage to avoid data hazard. The same as above.
-      (rs1_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR) -> mem.reg_wb_data
-    ))
-    val rs2_data = MuxCase(gr(rs2_addr), Seq(
-      // The value of register #0 is always zero
-      (rs2_addr === 0.U) -> 0.U(WORD_LEN.W),
-      // Forward data from EX, MEM and WB stage
-      // Forward from EX stage
-      (rs2_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR) -> exe.alu_out,
-      // Forward data from MEM stage to avoid data hazard. The same as above.
-      (rs2_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR) -> exe.reg_alu_out,
-      // Forward data from WB stage to avoid data hazard. The same as above.
-      (rs2_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR) -> mem.reg_wb_data
-    ))
-
 
     // Spec 2.6: The effective address is obtained by adding register rs1 to the sign-extended 12-bit offset.
     // sext 12bit value to 32bit value.
@@ -297,23 +273,67 @@ class DecodeStage {
         SW        -> List(ALU_ADD,  OP1_RS1,  OP2_IMS,  MEN_SCALAR, REN_NONE,   WB_NONE,  CSR_NONE, BS_W), // x[rs1] + sext(imm_s)
         // 2.7 Memory Ordering Instructions
         // Currently, no Out-of-Order Instructions, FENCE FENCE.TSO no effect at regfile, mem and order
-        FENCE     -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,   CSR_NONE, BS_W),
-        FENCE_TSO -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,   CSR_NONE, BS_W),
+        FENCE     -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W),
+        FENCE_TSO -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W),
+
         // 2.8 Environment Call and Breakpoints
-        ECALL     -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,   CSR_E,    BS_W),
-        // EBREAK
+        ECALL     -> List(ALU_NONE, OP1_PC,   OP2_NONE, MEN_NONE,   REN_NONE,   WB_CSR,   CSR_ECALL,BS_W),
+        // Currently, EBREAK is decoded as NOP
+        EBREAK    -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W),
+        MRET      -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W),
+
         // 9.1 "Zicsr", Control and Status Register (CSR) Instructions
         // "Zicsr" is I-type
-        /*
-        CSRRW     -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W), // CSRs[csr] <- x[rs1]
-        CSRRWI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W), // CSRs[csr] <- uext(imm_z)
-        CSRRS     -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S), // CSRs[csr] <- CSRs[csr] | x[rs1]
-        CSRRSI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S), // CSRs[csr] <- CSRs[csr] | uext(imm_z)
-        CSRRC     -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C), // CSRs[csr] <- CSRs[csr]&~x[rs1]
-        CSRRCI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C), // CSRs[csr] <- CSRs[csr]&~uext(imm_z)
-        */
+        CSRRW     -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W,    BS_W), // CSRs[csr] <==> x[rs1]
+        CSRRWI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W,    BS_W), // CSRs[csr] <==> uext(imm_z)
+        CSRRS     -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S,    BS_W), // CSRs[csr] <- CSRs[csr] | x[rs1]
+        CSRRSI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S,    BS_W), // CSRs[csr] <- CSRs[csr] | uext(imm_z)
+        CSRRC     -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~x[rs1]
+        CSRRCI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~uext(imm_z)
       ),
     )
+
+    // MuxCase priority from first to last
+    val rs1_data = MuxCase(gr(rs1_addr), Seq(
+      // The value of register #0 is always zero
+      (rs1_addr === 0.U) -> 0.U(WORD_LEN.W),
+      // Forward data from EX, MEM and WB stage
+      // Forward from EX stage
+      (rs1_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR) -> exe.alu_out,
+      // Forward data from MEM stage to avoid data hazard. The same as above.
+      (rs1_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR) -> exe.reg_alu_out,
+      // Forward data from WB stage to avoid data hazard. The same as above.
+      (rs1_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR) -> mem.reg_wb_data
+    ))
+    val rs2_data = MuxCase(gr(rs2_addr), Seq(
+      // The value of register #0 is always zero
+      (rs2_addr === 0.U) -> 0.U(WORD_LEN.W),
+      // Forward data from EX, MEM and WB stage
+      // Forward from EX stage
+      (rs2_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR) -> exe.alu_out,
+      // Forward data from MEM stage to avoid data hazard. The same as above.
+      (rs2_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR) -> exe.reg_alu_out,
+      // Forward data from WB stage to avoid data hazard. The same as above.
+      (rs2_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR) -> mem.reg_wb_data
+    ))
+
+    // Decode CSR instructions
+    val csr_addr = Mux(
+      csr_cmd === CSR_ECALL,
+      // Two operations: set csr:mepc = pc and csr:mcause = 11 (M ecall)
+      CSR_MEPC,
+      inst(31, 20), // I-type imm value
+    )
+    // Handle CSR instructions
+    val csr_old_data = MuxCase(csr(csr_addr), /* Read CSRs[csr] */ Seq(
+      // Forward data from EX, MEM and WB stage
+      // Forward from EX stage， new csr value is new_csr
+      (csr_addr === reg_csr_addr && reg_csr_cmd === WB_CSR) -> exe.new_csr,
+      // Forward data from MEM stage to avoid data hazard. The same as above.
+      (csr_addr === exe.reg_csr_addr && exe.reg_csr_cmd === WB_CSR) -> exe.reg_new_csr,
+      // Forward data from WB stage to avoid data hazard. The same as above.
+      (rs2_addr === mem.reg_csr_addr && mem.reg_csr_cmd === WB_CSR) -> mem.reg_new_csr
+    ))
 
     val load_flag = MuxCase(false.B, Seq(
       (inst === LB)   -> true.B,
@@ -328,6 +348,7 @@ class DecodeStage {
     val op1_data = MuxCase(0.U(WORD_LEN.W), Seq(
       (op1_sel === OP1_RS1) -> rs1_data,
       (op1_sel === OP1_PC)  -> prev.reg_pc,
+      (op1_sel === OP1_IMZ) -> imm_z_uext,
     ))
 
     // Determine 2nd operand data signal
@@ -338,20 +359,6 @@ class DecodeStage {
       (op2_sel === OP2_IMJ) -> imm_j_sext,
       (op2_sel === OP2_IMU) -> imm_u_shifted, // for LUI and AUIPC
     ))
-
-    // Decode CSR instructions
-    /*
-    val csr_addr = Mux(
-      csr_cmd === CSR_E,
-      // CSRs[0x342] is mcause register which describes where the ecall is executed from.
-      //    8: from use mode
-      //    9: from supervisor mode
-      //   10: from hypervisor mode
-      //   11: from machine mode
-      0x342.U(CSR_ADDR_LEN.W),
-      inst(31, 20), // I-type imm value
-    )
-    */
 
     // Save ID states for next stage
     reg_pc            := prev.reg_pc
@@ -367,8 +374,9 @@ class DecodeStage {
     reg_imm_s_sext    := imm_s_sext
     reg_imm_b_sext    := imm_b_sext
     reg_imm_u_shifted := imm_u_shifted
-    //reg_csr_addr      := csr_addr
+    reg_csr_addr      := csr_addr
     reg_csr_cmd       := csr_cmd
+    reg_csr_old_data  := csr_old_data
     reg_mem_wen       := mem_wen
     reg_byte_sel      := byte_sel
     reg_load_flag     := load_flag
@@ -397,6 +405,7 @@ class ExecuteStage {
   val br_target = Wire(UInt(WORD_LEN.W))
   val jmp_flag = Wire(Bool())
   val alu_out = Wire(UInt(WORD_LEN.W))
+  val new_csr = Wire(UInt(WORD_LEN.W))
 
   // EX/MEM pipeline registers
   val reg_pc            = RegInit(0.U(WORD_LEN.W))
@@ -409,6 +418,7 @@ class ExecuteStage {
   val reg_wb_sel        = RegInit(0.U(WB_SEL_LEN.W))
   val reg_csr_addr      = RegInit(0.U(CSR_ADDR_LEN.W))
   val reg_csr_cmd       = RegInit(0.U(CSR_LEN.W))
+  val reg_new_csr       = RegInit(0.U(WORD_LEN.W))
   val reg_imm_i_sext    = RegInit(0.U(WORD_LEN.W))
   val reg_imm_z_uext    = RegInit(0.U(WORD_LEN.W))
   val reg_alu_out       = RegInit(0.U(WORD_LEN.W))
@@ -433,7 +443,14 @@ class ExecuteStage {
       (prev.reg_exe_fun === ALU_SLTU) -> (prev.reg_op1_data < prev.reg_op2_data).asUInt(),
       // &~1 sets the LSB to zero (& 0b1111..1110) for jump instructions
       (prev.reg_exe_fun === ALU_JALR) -> ((prev.reg_op1_data + prev.reg_op2_data) & ~1.U(WORD_LEN.W)),
-      (prev.reg_exe_fun === ALU_RS1) -> prev.reg_op1_data,
+      (prev.reg_exe_fun === ALU_RS1)  -> prev.reg_op1_data,
+    ))
+
+    new_csr := MuxCase(0.U(WORD_LEN.W), Seq(
+      (prev.reg_csr_cmd === CSR_W)     -> prev.reg_op1_data, // Write
+      (prev.reg_csr_cmd === CSR_S)     -> (prev.reg_csr_old_data | prev.reg_op1_data), // Read and Set Bits
+      (prev.reg_csr_cmd === CSR_C)     -> (prev.reg_csr_old_data & ~prev.reg_op1_data), // Read and Clear Bits
+      (prev.reg_csr_cmd === CSR_ECALL) -> prev.reg_pc // store pc to epc
     ))
 
     // Branch instructions
@@ -461,6 +478,7 @@ class ExecuteStage {
     reg_wb_sel        := prev.reg_wb_sel
     reg_csr_addr      := prev.reg_csr_addr
     reg_csr_cmd       := prev.reg_csr_cmd
+    reg_new_csr       := new_csr
     reg_imm_i_sext    := prev.reg_imm_i_sext
     reg_imm_z_uext    := prev.reg_imm_z_uext
     reg_mem_wen       := prev.reg_mem_wen
@@ -475,11 +493,15 @@ class ExecuteStage {
 class MemStage {
   val wb_data = Wire(UInt(WORD_LEN.W)) // Declare wire for forwarding (p.200)
   // MEM/WB pipeline registers
-  val reg_wb_addr = RegInit(0.U(ADDR_LEN.W))
-  val reg_rf_wen  = RegInit(0.U(REN_LEN.W))
-  val reg_wb_data = RegInit(0.U(WORD_LEN.W))
+  val reg_wb_addr  = RegInit(0.U(ADDR_LEN.W))
+  val reg_rf_wen   = RegInit(0.U(REN_LEN.W))
+  val reg_wb_data  = RegInit(0.U(WORD_LEN.W))
+  val reg_csr_addr = RegInit(0.U(WORD_LEN.W))
+  val reg_csr_cmd  = RegInit(0.U(WORD_LEN.W))
+  val reg_new_csr  = RegInit(0.U(WORD_LEN.W))
+  val reg_pc       = RegInit(0.U(WORD_LEN.W))
 
-  def connect(dmem: DmemPortIo, prev: ExecuteStage, decode: DecodeStage, csr: Mem[UInt]) = {
+  def connect(dmem: DmemPortIo, prev: ExecuteStage, decode: DecodeStage) = {
     dmem.addr := prev.reg_alu_out // Always output data to memory regardless of instruction
     dmem.wen := prev.reg_mem_wen // mem_wen is integer and here it is implicitly converted to bool
     dmem.wdata := MuxCase(prev.reg_rs2_data, Seq(
@@ -490,30 +512,6 @@ class MemStage {
         dmem.rdata | prev.reg_rs2_data(15,0) // load half word unsigned
       )
     ))
-
-    /*
-    // Handle CSR instructions
-    val csr_rdata = csr(prev.reg_csr_addr) // Read CSRs[csr]
-    val csr_wdata = MuxCase(0.U(WORD_LEN.W), Seq(
-      (prev.reg_csr_cmd === CSR_W) -> prev.reg_op1_data, // Write
-      (prev.reg_csr_cmd === CSR_S) -> (csr_rdata | prev.reg_op1_data), // Read and Set Bits
-      (prev.reg_csr_cmd === CSR_C) -> (csr_rdata & ~prev.reg_op1_data), // Read and Clear Bits
-      // This CPU only implements the machine mode. 11 (machine mode) is always written to
-      // CSRs[0x342] (mcause).
-      (prev.reg_csr_cmd === CSR_E) -> 11.U(WORD_LEN.W),
-    ))
-
-    when(prev.reg_csr_cmd =/= CSR_NONE) {
-      csr(prev.reg_csr_addr) := csr_wdata
-    }
-    */
-
-    /*
-    when(prev.reg_csr_cmd === CSR_V) {
-      csr(VL_ADDR) := vl
-      csr(VTYPE_ADDR) := vtype
-    }
-    */
 
     // By default, write back the ALU result to register (wb_sel == WB_ALU)
     val mem_read_ext = MuxCase(dmem.rdata, Seq(
@@ -526,17 +524,24 @@ class MemStage {
         Cat(Fill(16, dmem.rdata(15)), dmem.rdata(15,0))   // load half word signed
       )
     ))
+
     wb_data := MuxCase(prev.reg_alu_out, Seq(
       (prev.reg_wb_sel === WB_MEM) -> mem_read_ext, // Loaded data from memory
-      (prev.reg_wb_sel === WB_PC) -> (prev.reg_pc + 4.U(WORD_LEN.W)), // Jump instruction stores the next pc (pc+4) to x[rd]
-      //(prev.reg_wb_sel === WB_CSR) -> csr_rdata, // CSR instruction write back CSRs[csr]
-      //(prev.reg_wb_sel === WB_VL) -> vl, // vsetvli, vsetivli, vsetvl
+      // Jump instruction stores the next pc (pc+4) to x[rd]
+      (prev.reg_wb_sel === WB_PC) -> (prev.reg_pc + 4.U(WORD_LEN.W))
     ))
 
+
     // Save MEM states for next stage
-    reg_wb_addr := prev.reg_wb_addr
-    reg_rf_wen  := prev.reg_rf_wen
-    reg_wb_data := wb_data
+    reg_wb_addr  := prev.reg_wb_addr
+    reg_rf_wen   := prev.reg_rf_wen
+    reg_wb_data  := wb_data
+    // save csr writeback
+    reg_csr_addr := prev.reg_csr_addr
+    reg_csr_cmd  := prev.reg_csr_cmd
+    reg_new_csr  := prev.reg_new_csr
+    // forward pc
+    reg_pc       := prev.reg_pc
 
     printf(p"MEM: pc=0x${Hexadecimal(prev.reg_pc)} wb_data=0x${Hexadecimal(wb_data)} rs1=0x${Hexadecimal(prev.reg_rs1_data)} rs2=0x${Hexadecimal(prev.reg_rs2_data)}\n")
   }
@@ -545,14 +550,22 @@ class MemStage {
 // WB
 class WriteBackStage {
 
-  def connect(prev: MemStage, gr: Mem[UInt], vr: Mem[UInt]) = {
+  def connect(prev: MemStage, gr: Mem[UInt], vr: Mem[UInt], csr: Mem[UInt]) = {
     when(prev.reg_rf_wen === REN_SCALAR) {
       gr(prev.reg_wb_addr) := prev.reg_wb_data // Write back to the register specified by rd
-    }.elsewhen(prev.reg_rf_wen === REN_VECTOR) {
-      //connectVle(prev, vr)
+    }
+    when(prev.reg_csr_cmd =/= WB_CSR) {
+      csr(prev.reg_csr_addr) := prev.reg_new_csr // Write back CSR[addr]
+      when(prev.reg_csr_cmd === CSR_ECALL) {
+      // ECALL, update mepc
+      csr(CSR_MEPC) := prev.reg_pc
+      // updates mcause
+      // mcause = 11 means Environment call from M-mode
+      csr(CSR_MCAUSE) := 11.U(WORD_LEN.W)
+    }
     }
 
-    printf(p"WB: wb_data=0x${Hexadecimal(prev.reg_wb_data)}\n")
+    printf(p"WB: wb_data=0x${Hexadecimal(prev.reg_wb_data)} new_csr=0x${Hexadecimal(prev.reg_new_csr)}\n")
   }
 }
 
@@ -582,10 +595,10 @@ class Core extends Module {
   val wb = new WriteBackStage()
 
   fetch.connect(io.imem, decode, execute, csr_regfile)
-  decode.connect(fetch, execute, mem, regfile)
+  decode.connect(fetch, execute, mem, regfile, csr_regfile)
   execute.connect(decode)
-  mem.connect(io.dmem, execute, decode, csr_regfile)
-  wb.connect(mem, regfile, vec_regfile)
+  mem.connect(io.dmem, execute, decode)
+  wb.connect(mem, regfile, vec_regfile, csr_regfile)
 
   // We can know that a program is exiting when it is jumping to the current address. This never
   // happens in C source since C does not allow an infinite loop without any side effect. The

@@ -16,6 +16,7 @@ import Consts._
   * }}}
   */
 class MemoryTest extends AnyFlatSpec with ChiselScalatestTester {
+  /*
   val mem_path = "src/test/scala/resources/memory/m16k_1.memory"
   "I-memory" should "read" in {
     test(new Memory(mem_path)) { dut =>
@@ -53,4 +54,5 @@ class MemoryTest extends AnyFlatSpec with ChiselScalatestTester {
       }
     }
   }
+  */
 }

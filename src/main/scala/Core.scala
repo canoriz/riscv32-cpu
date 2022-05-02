@@ -620,8 +620,8 @@ class Core extends Module {
   //    1042a:       c100                    sw      s0,0(a0)
   //    1042c:       a001                    j       1042c <_exit+0x2a>
   //
-  //io.exit := execute.jmp_flag && (decode.reg_pc === execute.alu_out)
-  io.exit := fetch.reg_pc >= 64.U(WORD_LEN.W)
+  io.exit := execute.jmp_flag && (decode.reg_pc === execute.alu_out)
+  //io.exit := fetch.reg_pc >= 64.U(WORD_LEN.W)
 
   io.gp := regfile(3)
   io.pc := execute.reg_pc

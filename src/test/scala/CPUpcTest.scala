@@ -21,6 +21,7 @@ class CPUStructTest extends AnyFlatSpec with ChiselScalatestTester {
   }
   */
 
+  /*
   for (f <- new File("src/test/scala/resources/memory"
       ).listFiles.filter(f => f.isFile && f.getName.endsWith(".memory"
       ))) {
@@ -35,4 +36,5 @@ class CPUStructTest extends AnyFlatSpec with ChiselScalatestTester {
       }
     }
   }
+  */
 }

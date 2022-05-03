@@ -7,10 +7,12 @@
  The result stores in t1, expected stores t2. Macro compares t1 and t2
  set gp 1 if t1==t2, else set gp 2
 */
- 
+
 #define RVTEST_BEGIN ;\
 .global _asm_start; \
-_asm_start:;
+_asm_start:;\
+addi t1, zero, 0;\
+addi t2, zero, 1;
 
 
 #define RVTEST_END ;\

@@ -1,10 +1,8 @@
-int main()
+int main(int argc)
 {
-	asm volatile("jal x1, jump");
-	asm volatile("nop");
-	// x5 failed
-	asm volatile("addi x5, x0, 1");
+	asm volatile("jal x0, jump");
+	asm volatile("ret"); // return if jal failed
 	asm volatile("jump:");
-	asm volatile("addi x2, x0, 1");
+	asm volatile("addi gp, x0, 1");
 	return 0;
 }

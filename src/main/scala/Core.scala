@@ -484,7 +484,10 @@ class ExecuteStage {
     reg_byte_sel      := prev.reg_byte_sel
     reg_load_unsigned := prev.reg_load_unsigned
 
-    printf(p"EX: pc=0x${Hexadecimal(prev.reg_pc)} wb_addr=${prev.reg_wb_addr} op1=0x${Hexadecimal(prev.reg_op1_data)} op2=0x${Hexadecimal(prev.reg_op2_data)} alu_out=0x${Hexadecimal(alu_out)} jmp=${jmp_flag}\n")
+    printf(p"""EX:
+    pc=0x${Hexadecimal(prev.reg_pc)} wb_addr=${prev.reg_wb_addr}
+    op1=0x${Hexadecimal(prev.reg_op1_data)} op2=0x${Hexadecimal(prev.reg_op2_data)} alu_out=0x${Hexadecimal(alu_out)}
+    jmp=${jmp_flag} br=${br_flag}\n""")
   }
 }
 

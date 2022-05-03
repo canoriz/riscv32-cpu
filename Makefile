@@ -2,7 +2,7 @@ CURRENT_DIR:=$(shell pwd)
 RISCV_TESTS := addi
 RISCV_ELF := $(patsubst %, riscv-tests/isa/rv32ui-p-%, $(RISCV_TESTS))
 RISCV_HEX := $(patsubst %, riscv-tests-hex/%.hex, $(notdir $(RISCV_ELF)))
-INSTR_TESTS := jal jalr
+INSTR_TESTS := jal jalr beq bne blt bge bgeu bltu
 INSTR_HEX := $(patsubst %, instruction-tests/%.hex, $(INSTR_TESTS))
 
 .PHONY: all test docker dockerimage clean
@@ -13,7 +13,7 @@ all:
 	$(info $$RISCV_HEX is [${RISCV_HEX}])
 	$(info $$INSTR_HEX is [${INSTR_HEX}])
 
-test:
+test: instr-tests
 	sbt test
 
 docker:

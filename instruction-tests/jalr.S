@@ -23,7 +23,6 @@ jal_t4:
     jalr x0, 0(t4)
 
 stage2:
-    # result is 15
     jal t4, jal_t4
     li t2, 83
 RVTEST_END

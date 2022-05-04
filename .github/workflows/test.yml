@@ -21,7 +21,9 @@ jobs:
       #    mill-version: 0.9.7
       - name: Cache Scala
         uses: coursier/cache-action@v5
+      - name: Compile binaries
+        run: make instr-tests
       - name: SBT Test
-        run: sbt test
+        run: make test
       #- name: mill Test
       #  run: mill _.test

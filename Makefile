@@ -2,7 +2,8 @@ CURRENT_DIR:=$(shell pwd)
 RISCV_TESTS := addi
 RISCV_ELF := $(patsubst %, riscv-tests/isa/rv32ui-p-%, $(RISCV_TESTS))
 RISCV_HEX := $(patsubst %, riscv-tests-hex/%.hex, $(notdir $(RISCV_ELF)))
-INSTR_TESTS := jal jalr beq bne blt bge bgeu bltu
+INSTR_TESTS := addi jal jalr beq bne blt bge bgeu bltu lui slti sltiu xori \
+andi auipc
 INSTR_HEX := $(patsubst %, instruction-tests/%.hex, $(INSTR_TESTS))
 
 .PHONY: all test docker dockerimage clean
@@ -29,7 +30,7 @@ dockerimage:
 
 .PRECIOUS: %.dump
 %.dump: %.elf
-	riscv64-unknown-elf-objdump -b elf32-littleriscv -D $< > $@
+	riscv64-unknown-elf-objdump -b elf32-littleriscv -d $< > $@
 
 %.hex: %.bin %.dump
 	od -An -tx1 -w1 -v $< > $@

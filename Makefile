@@ -3,7 +3,7 @@ RISCV_TESTS := addi
 RISCV_ELF := $(patsubst %, riscv-tests/isa/rv32ui-p-%, $(RISCV_TESTS))
 RISCV_HEX := $(patsubst %, riscv-tests-hex/%.hex, $(notdir $(RISCV_ELF)))
 INSTR_TESTS := addi jal jalr beq bne blt bge bgeu bltu lui slti sltiu xori \
-andi auipc
+andi ori slli srli sub auipc srai add and or xor
 INSTR_HEX := $(patsubst %, instruction-tests/%.hex, $(INSTR_TESTS))
 
 .PHONY: all test docker dockerimage clean

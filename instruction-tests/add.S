@@ -5,10 +5,8 @@ RVTEST_BEGIN
     addi t2, zero, 56                    # t2=5
     addi t3, zero, 135
 
-    ori t1, t2, 275   # t1 = 315
-    ori t4, t3, 743   # t4 = 743
-    ori t1, t4, 775   # t1 = 999
-    ori t1, t1, 946   # t1 = 1015
-
-    li t2, 1015
+    add  t1, t2, t3    # t1 = 191
+    add  t2, t1, t3    # t2 = 326
+    add  t1, t2, t1    # t1 = 517
+    li t2, 517
 RVTEST_END

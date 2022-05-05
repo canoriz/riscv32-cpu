@@ -4,7 +4,7 @@ RISCV_ELF := $(patsubst %, riscv-tests/isa/rv32ui-p-%, $(RISCV_TESTS))
 RISCV_HEX := $(patsubst %, riscv-tests-hex/%.hex, $(notdir $(RISCV_ELF)))
 INSTR_TESTS := addi jal jalr beq bne blt bge bgeu bltu lui slti sltiu xori \
 andi ori slli srli sub auipc srai add and or xor slt sltu sll sra srl fence \
-sw sh sb
+sw sh sb lh lb lhu lbu
 
 INSTR_HEX := $(patsubst %, instruction-tests/%.hex, $(INSTR_TESTS))
 

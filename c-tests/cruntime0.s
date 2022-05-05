@@ -42,7 +42,8 @@ _start:
 	li s0, 0x3000
 	li sp, 0x3000
 
-# usable t1-6 s1-11
 	call main
+
+# forever loop is the stop instruction
 1:
 	j 1b

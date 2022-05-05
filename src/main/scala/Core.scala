@@ -45,12 +45,13 @@ class FetchStage {
     // Save to IF/ID registers
     // set to current pc address in Fetch stage
     // when data_hazard, Decode stage will exec NOP
-    reg_pc := pc_this_cycle
     pc     := pc_next_cycle
 
     inst      := imem.inst
     imem.addr := pc_this_cycle
-    reg_inst  := inst
+
+    reg_pc    := Mux(decode.stall_flag, reg_pc, pc_this_cycle)
+    reg_inst  := Mux(decode.stall_flag, reg_inst, inst)
 
     printf(p"IF: pc=0x${Hexadecimal(pc_this_cycle)} inst=0x${Hexadecimal(inst)}\n")
 
@@ -301,7 +302,7 @@ class DecodeStage {
       // Forward from EX stage
       (rs1_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR) -> exe.alu_out,
       // Forward data from MEM stage to avoid data hazard. The same as above.
-      (rs1_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR) -> exe.reg_alu_out,
+      (rs1_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR) -> mem.wb_data,
       // Forward data from WB stage to avoid data hazard. The same as above.
       (rs1_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR) -> mem.reg_wb_data
     ))
@@ -312,7 +313,7 @@ class DecodeStage {
       // Forward from EX stage
       (rs2_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR) -> exe.alu_out,
       // Forward data from MEM stage to avoid data hazard. The same as above.
-      (rs2_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR) -> exe.reg_alu_out,
+      (rs2_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR) -> mem.wb_data,
       // Forward data from WB stage to avoid data hazard. The same as above.
       (rs2_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR) -> mem.reg_wb_data
     ))
@@ -384,17 +385,25 @@ class DecodeStage {
 
 
     // DEBUG forward
-    val rs1_hazard = (rs1_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
-      (rs1_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
-      (rs1_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U)
-    val rs2_hazard = (rs2_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
-      (rs2_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) ||
-      (rs2_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U)
+    val rs1_hazard = MuxCase(0.U, Seq(
+      (rs1_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) -> 1.U,
+      (rs1_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) -> 2.U,
+      (rs1_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR && rs1_addr =/= 0.U) -> 3.U,
+    ))
+    val rs2_hazard = MuxCase(0.U, Seq(
+      (rs2_addr === reg_wb_addr && reg_rf_wen === REN_SCALAR && rs2_addr =/= 0.U) -> 1.U,
+      (rs2_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR && rs2_addr =/= 0.U) -> 2.U,
+      (rs2_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR && rs2_addr =/= 0.U) -> 3.U,
+    ))
     printf(p"""ID: pc=0x${Hexadecimal(prev.reg_pc)}
       inst=0x${Hexadecimal(inst)}
           rs1=${rs1_data} rs2=${rs2_data}
-      data_hazard=${rs1_hazard || rs2_hazard}
-          rs1_hazard=${rs1_hazard} rs2_hazard=${rs2_hazard}\n""")
+      data_hazard=${rs1_hazard > 0.U || rs2_hazard > 0.U}
+          rs1_hazard=${rs1_hazard} rs2_hazard=${rs2_hazard}
+          rs1_addr=${rs1_addr} rs2_addr=${rs2_addr}
+          op1_data=${op1_data} op2_data=${op2_data}
+      byte_sel=0x${Decimal(byte_sel)}
+      stall=0x${stall_flag}\n""")
   }
 }
 
@@ -421,7 +430,7 @@ class ExecuteStage {
   val reg_imm_i_sext    = RegInit(0.U(WORD_LEN.W))
   val reg_imm_z_uext    = RegInit(0.U(WORD_LEN.W))
   val reg_alu_out       = RegInit(0.U(WORD_LEN.W))
-  val reg_byte_sel      = RegInit(0.U(BS_LEN))
+  val reg_byte_sel      = RegInit(0.U(BS_LEN.W))
   val reg_load_unsigned = RegInit(false.B)
 
   def connect(prev: DecodeStage) = {
@@ -487,7 +496,8 @@ class ExecuteStage {
     printf(p"""EX:
     pc=0x${Hexadecimal(prev.reg_pc)} wb_addr=${prev.reg_wb_addr}
     op1=0x${Hexadecimal(prev.reg_op1_data)} op2=0x${Hexadecimal(prev.reg_op2_data)} alu_out=0x${Hexadecimal(alu_out)}
-    jmp=${jmp_flag} br=${br_flag}\n""")
+    jmp=${jmp_flag} br=${br_flag}
+    byte_sel=0x${Decimal(prev.reg_byte_sel)}\n""")
   }
 }
 
@@ -508,10 +518,10 @@ class MemStage {
     dmem.wen := prev.reg_mem_wen // mem_wen is integer and here it is implicitly converted to bool
     dmem.wdata := MuxCase(prev.reg_rs2_data, Seq(
       (prev.reg_byte_sel === BS_B) -> (
-        dmem.rdata | prev.reg_rs2_data(7,0)  // load byte unsigned
+        Cat(dmem.rdata(31, 8), prev.reg_rs2_data(7,0))  // store byte unsigned
       ),
       (prev.reg_byte_sel === BS_H) -> (
-        dmem.rdata | prev.reg_rs2_data(15,0) // load half word unsigned
+        Cat(dmem.rdata(31,16), prev.reg_rs2_data(15,0)) // store half word unsigned
       )
     ))
 
@@ -545,7 +555,13 @@ class MemStage {
     // forward pc
     reg_pc       := prev.reg_pc
 
-    printf(p"MEM: pc=0x${Hexadecimal(prev.reg_pc)} wb_data=0x${Hexadecimal(wb_data)} rs1=0x${Hexadecimal(prev.reg_rs1_data)} rs2=0x${Hexadecimal(prev.reg_rs2_data)}\n")
+    printf(p"""MEM:
+    pc=0x${Hexadecimal(prev.reg_pc)}
+    mem_wen=${prev.reg_mem_wen}
+    byte_sel=0x${Decimal(prev.reg_byte_sel)} wmem_data=0x${Hexadecimal(dmem.wdata)}
+    rs1=0x${Hexadecimal(prev.reg_rs1_data)} rs2=0x${Hexadecimal(prev.reg_rs2_data)}
+    wb_wen=${prev.reg_rf_wen}
+    wb_data=0x${Hexadecimal(wb_data)}\n""")
   }
 }
 
@@ -559,15 +575,17 @@ class WriteBackStage {
     when(prev.reg_csr_cmd =/= WB_CSR) {
       csr(prev.reg_csr_addr) := prev.reg_new_csr // Write back CSR[addr]
       when(prev.reg_csr_cmd === CSR_ECALL) {
-      // ECALL, update mepc
-      csr(CSR_MEPC) := prev.reg_pc
-      // updates mcause
-      // mcause = 11 means Environment call from M-mode
-      csr(CSR_MCAUSE) := 11.U(WORD_LEN.W)
-    }
+        // ECALL, update mepc
+        csr(CSR_MEPC) := prev.reg_pc
+        // updates mcause
+        // mcause = 11 means Environment call from M-mode
+        csr(CSR_MCAUSE) := 11.U(WORD_LEN.W)
+      }
     }
 
-    printf(p"WB: wb_data=0x${Hexadecimal(prev.reg_wb_data)} new_csr=0x${Hexadecimal(prev.reg_new_csr)}\n")
+    printf(p"""WB:
+    rf_wen=${prev.reg_rf_wen} csr_cmd=${prev.reg_csr_cmd}
+    wb_data=0x${Hexadecimal(prev.reg_wb_data)} new_csr=0x${Hexadecimal(prev.reg_new_csr)}\n""")
   }
 }
 

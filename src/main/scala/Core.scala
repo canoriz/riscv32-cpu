@@ -287,10 +287,10 @@ class DecodeStage {
         // "Zicsr" is I-type
         CSRRW     -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W,    BS_W), // CSRs[csr] <==> x[rs1]
         CSRRWI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W,    BS_W), // CSRs[csr] <==> uext(imm_z)
-        CSRRS     -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S,    BS_W), // CSRs[csr] <- CSRs[csr] | x[rs1]
-        CSRRSI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S,    BS_W), // CSRs[csr] <- CSRs[csr] | uext(imm_z)
-        CSRRC     -> List(ALU_RS1,  OP1_RS1,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~x[rs1]
-        CSRRCI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~uext(imm_z)
+        CSRRS     -> List(ALU_OR,   OP1_RS1,  OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S,    BS_W), // CSRs[csr] <- CSRs[csr] | x[rs1]
+        CSRRSI    -> List(ALU_OR,   OP1_IMZ,  OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S,    BS_W), // CSRs[csr] <- CSRs[csr] | uext(imm_z)
+        CSRRC     -> List(ALU_OR,   OP1_NRS1, OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~x[rs1]
+        CSRRCI    -> List(ALU_OR,   OP1_IMZ,  OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~uext(imm_z)
       ),
     )
 
@@ -329,11 +329,11 @@ class DecodeStage {
     val csr_old_data = MuxCase(csr(csr_addr), /* Read CSRs[csr] */ Seq(
       // Forward data from EX, MEM and WB stage
       // Forward from EX stage， new csr value is new_csr
-      (csr_addr === reg_csr_addr && reg_csr_cmd === WB_CSR) -> exe.new_csr,
+      (csr_addr === reg_csr_addr && reg_wb_sel === WB_CSR) -> exe.new_csr,
       // Forward data from MEM stage to avoid data hazard. The same as above.
-      (csr_addr === exe.reg_csr_addr && exe.reg_csr_cmd === WB_CSR) -> exe.reg_new_csr,
+      (csr_addr === exe.reg_csr_addr && exe.reg_wb_sel === WB_CSR) -> exe.reg_new_csr,
       // Forward data from WB stage to avoid data hazard. The same as above.
-      (rs2_addr === mem.reg_csr_addr && mem.reg_csr_cmd === WB_CSR) -> mem.reg_new_csr
+      (csr_addr === mem.reg_csr_addr && mem.reg_wb_sel === WB_CSR) -> mem.reg_new_csr
     ))
 
     val load_flag = MuxCase(false.B, Seq(
@@ -350,6 +350,7 @@ class DecodeStage {
       (op1_sel === OP1_RS1) -> rs1_data,
       (op1_sel === OP1_PC)  -> prev.reg_pc,
       (op1_sel === OP1_IMZ) -> imm_z_uext,
+      (op1_sel === OP1_NRS1)-> ~rs1_data,
     ))
 
     // Determine 2nd operand data signal
@@ -359,6 +360,7 @@ class DecodeStage {
       (op2_sel === OP2_IMS) -> imm_s_sext,
       (op2_sel === OP2_IMJ) -> imm_j_sext,
       (op2_sel === OP2_IMU) -> imm_u_shifted, // for LUI and AUIPC
+      (op2_sel === OP2_CSR) -> csr_old_data,
     ))
 
     // Save ID states for next stage
@@ -395,6 +397,11 @@ class DecodeStage {
       (rs2_addr === exe.reg_wb_addr && exe.reg_rf_wen === REN_SCALAR && rs2_addr =/= 0.U) -> 2.U,
       (rs2_addr === mem.reg_wb_addr && mem.reg_rf_wen === REN_SCALAR && rs2_addr =/= 0.U) -> 3.U,
     ))
+    val csr_hazard = MuxCase(0.U, Seq(
+      (csr_addr === reg_csr_addr && reg_wb_sel === WB_CSR) -> 1.U,
+      (csr_addr === exe.reg_csr_addr && exe.reg_wb_sel === WB_CSR) -> 2.U,
+      (csr_addr === mem.reg_csr_addr && mem.reg_wb_sel === WB_CSR) -> 3.U
+    ))
     printf(p"""ID: pc=0x${Hexadecimal(prev.reg_pc)}
       inst=0x${Hexadecimal(inst)}
           rs1=${rs1_data} rs2=${rs2_data}
@@ -402,6 +409,8 @@ class DecodeStage {
           rs1_hazard=${rs1_hazard} rs2_hazard=${rs2_hazard}
           rs1_addr=${rs1_addr} rs2_addr=${rs2_addr}
           op1_data=${op1_data} op2_data=${op2_data}
+          csr_hazard=${csr_hazard} csr_addr=${csr_addr}
+          csr_data=${csr_old_data}
       byte_sel=0x${Decimal(byte_sel)}
       stall=0x${stall_flag}\n""")
   }
@@ -427,6 +436,7 @@ class ExecuteStage {
   val reg_csr_addr      = RegInit(0.U(CSR_ADDR_LEN.W))
   val reg_csr_cmd       = RegInit(0.U(CSR_LEN.W))
   val reg_new_csr       = RegInit(0.U(WORD_LEN.W))
+  val reg_csr_old_data  = RegInit(0.U(WORD_LEN.W))
   val reg_imm_i_sext    = RegInit(0.U(WORD_LEN.W))
   val reg_imm_z_uext    = RegInit(0.U(WORD_LEN.W))
   val reg_alu_out       = RegInit(0.U(WORD_LEN.W))
@@ -454,12 +464,7 @@ class ExecuteStage {
       (prev.reg_exe_fun === ALU_RS1)  -> prev.reg_op1_data,
     ))
 
-    new_csr := MuxCase(0.U(WORD_LEN.W), Seq(
-      (prev.reg_csr_cmd === CSR_W)     -> prev.reg_op1_data, // Write
-      (prev.reg_csr_cmd === CSR_S)     -> (prev.reg_csr_old_data | prev.reg_op1_data), // Read and Set Bits
-      (prev.reg_csr_cmd === CSR_C)     -> (prev.reg_csr_old_data & ~prev.reg_op1_data), // Read and Clear Bits
-      (prev.reg_csr_cmd === CSR_ECALL) -> prev.reg_pc // store pc to epc
-    ))
+    new_csr := alu_out
 
     // Branch instructions
     br_flag := MuxCase(false.B, Seq(
@@ -487,6 +492,7 @@ class ExecuteStage {
     reg_csr_addr      := prev.reg_csr_addr
     reg_csr_cmd       := prev.reg_csr_cmd
     reg_new_csr       := new_csr
+    reg_csr_old_data  := prev.reg_csr_old_data
     reg_imm_i_sext    := prev.reg_imm_i_sext
     reg_imm_z_uext    := prev.reg_imm_z_uext
     reg_mem_wen       := prev.reg_mem_wen
@@ -497,7 +503,9 @@ class ExecuteStage {
     pc=0x${Hexadecimal(prev.reg_pc)} wb_addr=${prev.reg_wb_addr}
     op1=0x${Hexadecimal(prev.reg_op1_data)} op2=0x${Hexadecimal(prev.reg_op2_data)} alu_out=0x${Hexadecimal(alu_out)}
     jmp=${jmp_flag} br=${br_flag}
-    byte_sel=0x${Decimal(prev.reg_byte_sel)}\n""")
+    byte_sel=0x${Decimal(prev.reg_byte_sel)}
+    csr_old_data=${prev.reg_csr_old_data}
+    csr_addr=${prev.reg_csr_addr} new_csr=${new_csr}\n""")
   }
 }
 
@@ -507,6 +515,7 @@ class MemStage {
   // MEM/WB pipeline registers
   val reg_wb_addr  = RegInit(0.U(ADDR_LEN.W))
   val reg_rf_wen   = RegInit(0.U(REN_LEN.W))
+  val reg_wb_sel   = RegInit(0.U(WORD_LEN.W))
   val reg_wb_data  = RegInit(0.U(WORD_LEN.W))
   val reg_csr_addr = RegInit(0.U(WORD_LEN.W))
   val reg_csr_cmd  = RegInit(0.U(WORD_LEN.W))
@@ -540,7 +549,8 @@ class MemStage {
     wb_data := MuxCase(prev.reg_alu_out, Seq(
       (prev.reg_wb_sel === WB_MEM) -> mem_read_ext, // Loaded data from memory
       // Jump instruction stores the next pc (pc+4) to x[rd]
-      (prev.reg_wb_sel === WB_PC) -> (prev.reg_pc + 4.U(WORD_LEN.W))
+      (prev.reg_wb_sel === WB_PC) -> (prev.reg_pc + 4.U(WORD_LEN.W)),
+      (prev.reg_wb_sel === WB_CSR) -> prev.reg_csr_old_data,
     ))
 
 
@@ -548,6 +558,7 @@ class MemStage {
     reg_wb_addr  := prev.reg_wb_addr
     reg_rf_wen   := prev.reg_rf_wen
     reg_wb_data  := wb_data
+    reg_wb_sel   := prev.reg_wb_sel
     // save csr writeback
     reg_csr_addr := prev.reg_csr_addr
     reg_csr_cmd  := prev.reg_csr_cmd
@@ -561,7 +572,9 @@ class MemStage {
     byte_sel=0x${Decimal(prev.reg_byte_sel)} wmem_data=0x${Hexadecimal(dmem.wdata)}
     rs1=0x${Hexadecimal(prev.reg_rs1_data)} rs2=0x${Hexadecimal(prev.reg_rs2_data)}
     wb_wen=${prev.reg_rf_wen}
-    wb_data=0x${Hexadecimal(wb_data)}\n""")
+    wb_data=0x${Hexadecimal(wb_data)}
+    csr_old_data=${prev.reg_csr_old_data}
+    csr_addr=${prev.reg_csr_addr} new_csr=${prev.reg_new_csr}\n""")
   }
 }
 
@@ -572,7 +585,7 @@ class WriteBackStage {
     when(prev.reg_rf_wen === REN_SCALAR) {
       gr(prev.reg_wb_addr) := prev.reg_wb_data // Write back to the register specified by rd
     }
-    when(prev.reg_csr_cmd =/= WB_CSR) {
+    when(prev.reg_wb_sel === WB_CSR) {
       csr(prev.reg_csr_addr) := prev.reg_new_csr // Write back CSR[addr]
       when(prev.reg_csr_cmd === CSR_ECALL) {
         // ECALL, update mepc
@@ -584,8 +597,9 @@ class WriteBackStage {
     }
 
     printf(p"""WB:
-    rf_wen=${prev.reg_rf_wen} csr_cmd=${prev.reg_csr_cmd}
-    wb_data=0x${Hexadecimal(prev.reg_wb_data)} new_csr=0x${Hexadecimal(prev.reg_new_csr)}\n""")
+    rf_wen=${prev.reg_rf_wen} wb_data=0x${Hexadecimal(prev.reg_wb_data)}
+    csr_cmd=${prev.reg_csr_cmd}
+    csr_addr=${prev.reg_csr_addr} new_csr=0x${Hexadecimal(prev.reg_new_csr)}\n""")
   }
 }
 

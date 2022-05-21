@@ -11,7 +11,9 @@
 #define RVTEST_BEGIN ;\
 .global _asm_start; \
 _asm_start:;\
-addi t1, zero, 0;\
+RVTEST_SET_TRAP_BASE \
+real_code:; \
+addi t1, zero, 0; \
 addi t2, zero, 1;
 
 
@@ -24,3 +26,16 @@ test_fail:; \
     addi gp, x0, 2; \
 loop4ever:; \
     j loop4ever;
+
+// set trap base
+#define RVTEST_SET_TRAP_BASE ;\
+la    t1, trap_base; \
+csrw  mtvec, t1; \
+j     real_code; \
+\
+trap_base:; \
+csrr  t1, mepc; \
+addi  t1, t1, 4; \
+csrw  mepc, t1; \
+addi  t1, zero, 0x536; \
+mret;

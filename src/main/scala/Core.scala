@@ -37,8 +37,9 @@ class FetchStage {
       exe.br_flag  -> exe.br_target, // Branch instructions write back br_target address to program counter
       exe.jmp_flag -> exe.alu_out, // Jump instructions calculate the jump address by ALU
       // CSRs[0x305] is mtvec (trap_vector). The process on exception (syscall) is written at the
-      // trap_vector address. Note that there is no OS on this CPU.
-      //(inst === ECALL) -> csr(0x305),
+      // trap_vector address. Note that only direct mode.
+      decode.ecall -> decode.trap_base,
+      decode.mret  -> decode.mepc,
     ))
     pc_next_cycle := Mux(decode.stall_flag, pc_this_cycle, pc_this_cycle + INST_BYTES)
 
@@ -133,6 +134,10 @@ class FetchStage {
 class DecodeStage {
   val inst       = Wire(UInt(WORD_LEN.W))
   val stall_flag = Wire(Bool())
+  val mret       = Wire(Bool())
+  val mepc       = Wire(UInt(WORD_LEN.W))
+  val ecall      = Wire(Bool())
+  val trap_base  = Wire(UInt(WORD_LEN.W))
   // ID/EX pipeline registers
   val reg_pc            = RegInit(0.U(WORD_LEN.W))
   val reg_wb_addr       = RegInit(0.U(ADDR_LEN.W))
@@ -278,7 +283,7 @@ class DecodeStage {
         FENCE_TSO -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W),
 
         // 2.8 Environment Call and Breakpoints
-        ECALL     -> List(ALU_NONE, OP1_PC,   OP2_NONE, MEN_NONE,   REN_NONE,   WB_CSR,   CSR_ECALL,BS_W),
+        ECALL     -> List(ALU_RS1,  OP1_PC,   OP2_NONE, MEN_NONE,   REN_NONE,   WB_CSR,   CSR_ECALL,BS_W),
         // Currently, EBREAK is decoded as NOP
         EBREAK    -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W),
         MRET      -> List(ALU_NONE, OP1_NONE, OP2_NONE, MEN_NONE,   REN_NONE,   WB_NONE,  CSR_NONE, BS_W),
@@ -319,13 +324,11 @@ class DecodeStage {
     ))
 
     // Decode CSR instructions
-    val csr_addr = Mux(
-      csr_cmd === CSR_ECALL,
-      // Two operations: set csr:mepc = pc and csr:mcause = 11 (M ecall)
-      CSR_MEPC,
-      inst(31, 20), // I-type imm value
-    )
-    // Handle CSR instructions
+    val csr_addr = MuxCase(inst(31, 20), Seq(
+      (inst === ECALL) -> CSR_MEPC, // Two operations: set csr:mepc = pc and csr:mcause = 11 (M ecall)
+      (inst === MRET)  -> CSR_MEPC, // I-type imm value
+    ))
+    // Forward csr registers
     val csr_old_data = MuxCase(csr(csr_addr), /* Read CSRs[csr] */ Seq(
       // Forward data from EX, MEM and WB stage
       // Forward from EX stage， new csr value is new_csr
@@ -335,6 +338,10 @@ class DecodeStage {
       // Forward data from WB stage to avoid data hazard. The same as above.
       (csr_addr === mem.reg_csr_addr && mem.reg_wb_sel === WB_CSR) -> mem.reg_new_csr
     ))
+    mepc      := csr_old_data
+    mret      := Mux(inst === MRET,  true.B, false.B)
+    ecall     := Mux(inst === ECALL, true.B, false.B)
+    trap_base := csr(CSR_MTVEC) & 0xfffffffcL.U
 
     val load_flag = MuxCase(false.B, Seq(
       (inst === LB)   -> true.B,

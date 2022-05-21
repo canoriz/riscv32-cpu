@@ -56,9 +56,7 @@ object Consts {
   val BR_BGEU     = 16.U(EXE_FUN_LEN.W)
   val ALU_JALR    = 17.U(EXE_FUN_LEN.W)
   val ALU_RS1     = 18.U(EXE_FUN_LEN.W) // Copy RS1
-  val ALU_VADDVV  = 19.U(EXE_FUN_LEN.W)
-  val VSET        = 20.U(EXE_FUN_LEN.W)
-  val ALU_PCNT    = 21.U(EXE_FUN_LEN.W)
+  val EXP_MRET    = 19.U(EXE_FUN_LEN.W)
 
   val OP1_LEN  = 3
   val OP1_RS1  = 0.U(OP1_LEN.W)

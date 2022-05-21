@@ -6,12 +6,12 @@ RVTEST_BEGIN
 case1:
     # test no csr forward
     csrrw  x0, mtvec, t3  # t3 -> mtvec
+    nop
+    nop
+    nop
+    nop
+    nop
     csrrsi t5, mtvec, 0x12  # mtvec -> t5
-    nop
-    nop
-    nop
-    nop
-    nop
     csrr  t3, mtvec
     li    t5, 0x1234567a
     bne   t3, t5, ne1

@@ -410,7 +410,7 @@ class DecodeStage {
           rs1_addr=${rs1_addr} rs2_addr=${rs2_addr}
           op1_data=${op1_data} op2_data=${op2_data}
           csr_hazard=${csr_hazard} csr_addr=${csr_addr}
-          csr_data=${csr_old_data}
+          csr_data=0x${Hexadecimal(csr_old_data)}
       byte_sel=0x${Decimal(byte_sel)}
       stall=0x${stall_flag}\n""")
   }
@@ -504,8 +504,8 @@ class ExecuteStage {
     op1=0x${Hexadecimal(prev.reg_op1_data)} op2=0x${Hexadecimal(prev.reg_op2_data)} alu_out=0x${Hexadecimal(alu_out)}
     jmp=${jmp_flag} br=${br_flag}
     byte_sel=0x${Decimal(prev.reg_byte_sel)}
-    csr_old_data=${prev.reg_csr_old_data}
-    csr_addr=${prev.reg_csr_addr} new_csr=${new_csr}\n""")
+    csr_old_data=0x${Hexadecimal(prev.reg_csr_old_data)}
+    csr_addr=${prev.reg_csr_addr} new_csr=0x${Hexadecimal(new_csr)}\n""")
   }
 }
 
@@ -573,8 +573,8 @@ class MemStage {
     rs1=0x${Hexadecimal(prev.reg_rs1_data)} rs2=0x${Hexadecimal(prev.reg_rs2_data)}
     wb_wen=${prev.reg_rf_wen}
     wb_data=0x${Hexadecimal(wb_data)}
-    csr_old_data=${prev.reg_csr_old_data}
-    csr_addr=${prev.reg_csr_addr} new_csr=${prev.reg_new_csr}\n""")
+    csr_old_data=0x${Hexadecimal(prev.reg_csr_old_data)}
+    csr_addr=${prev.reg_csr_addr} new_csr=0x${Hexadecimal(prev.reg_new_csr)}\n""")
   }
 }
 

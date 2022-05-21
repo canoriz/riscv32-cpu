@@ -5,7 +5,7 @@ RISCV_HEX := $(patsubst %, riscv-tests-hex/%.hex, $(notdir $(RISCV_ELF)))
 
 INSTR_TESTS := addi jal jalr beq bne blt bge bgeu bltu lui slti sltiu xori \
 andi ori slli srli sub auipc srai add and or xor slt sltu sll sra srl fence \
-sw sh sb lh lb lhu lbu csrrw csrrwi csrrs csrrsi csrrc csrrci
+sw sh sb lh lb lhu lbu csrrw csrrwi csrrs csrrsi csrrc csrrci ecall
 INSTR_HEX := $(patsubst %, instruction-tests/%.hex, $(INSTR_TESTS))
 
 C_TESTS := for

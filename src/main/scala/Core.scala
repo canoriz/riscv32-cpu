@@ -290,7 +290,7 @@ class DecodeStage {
         CSRRS     -> List(ALU_OR,   OP1_RS1,  OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S,    BS_W), // CSRs[csr] <- CSRs[csr] | x[rs1]
         CSRRSI    -> List(ALU_OR,   OP1_IMZ,  OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S,    BS_W), // CSRs[csr] <- CSRs[csr] | uext(imm_z)
         CSRRC     -> List(ALU_AND,  OP1_NRS1, OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~x[rs1]
-        CSRRCI    -> List(ALU_AND,  OP1_IMZ,  OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~uext(imm_z)
+        CSRRCI    -> List(ALU_AND,  OP1_NIMZ, OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~uext(imm_z)
       ),
     )
 
@@ -351,6 +351,7 @@ class DecodeStage {
       (op1_sel === OP1_PC)  -> prev.reg_pc,
       (op1_sel === OP1_IMZ) -> imm_z_uext,
       (op1_sel === OP1_NRS1)-> ~rs1_data,
+      (op1_sel === OP1_NIMZ)-> ~imm_z_uext,
     ))
 
     // Determine 2nd operand data signal
@@ -408,7 +409,7 @@ class DecodeStage {
       data_hazard=${rs1_hazard > 0.U || rs2_hazard > 0.U}
           rs1_hazard=${rs1_hazard} rs2_hazard=${rs2_hazard}
           rs1_addr=${rs1_addr} rs2_addr=${rs2_addr}
-          op1_data=${op1_data} op2_data=${op2_data}
+          op1_data=0x${Hexadecimal(op1_data)} op2_data=0x${Hexadecimal(op2_data)}
           csr_hazard=${csr_hazard} csr_addr=${csr_addr}
           csr_data=0x${Hexadecimal(csr_old_data)}
       byte_sel=0x${Decimal(byte_sel)}

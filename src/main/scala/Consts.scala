@@ -66,6 +66,7 @@ object Consts {
   val OP1_NONE = 2.U(OP1_LEN.W)
   val OP1_IMZ  = 3.U(OP1_LEN.W)
   val OP1_NRS1 = 4.U(OP1_LEN.W)
+  val OP1_NIMZ = 5.U(OP1_LEN.W)
 
   val OP2_LEN  = 3
   val OP2_NONE = 0.U(OP2_LEN.W)

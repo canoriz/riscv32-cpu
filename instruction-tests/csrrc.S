@@ -14,7 +14,7 @@ case1:
     nop
     nop
     csrr  t3, mtvec
-    li    t5, 0x12141268
+    li    t5, 0x12145228
     bne   t3, t5, ne1
 
 case2:
@@ -27,7 +27,7 @@ case2:
     nop
     nop
     csrr  t3, mtvec
-    li    t5, 0x2
+    li    t5, 0x4004
     bne   t3, t5, ne1
 
 case3:
@@ -36,8 +36,8 @@ case3:
     csrrw x0, mtvec, t3  # t3 -> mtvec
     li    t2, 0x62ad52
     csrrc t5, mtvec, t2  # mtvec -> t5
-    csrr  t3, mtvec # t3 = 0x666fd52
-    li    t5, 0x6041002
+    csrr  t3, mtvec
+    li    t5, 0x6045000
     bne   t3, t5, ne1
 
     li    t2, 0

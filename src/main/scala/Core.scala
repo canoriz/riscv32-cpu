@@ -289,8 +289,8 @@ class DecodeStage {
         CSRRWI    -> List(ALU_RS1,  OP1_IMZ,  OP2_NONE, MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_W,    BS_W), // CSRs[csr] <==> uext(imm_z)
         CSRRS     -> List(ALU_OR,   OP1_RS1,  OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S,    BS_W), // CSRs[csr] <- CSRs[csr] | x[rs1]
         CSRRSI    -> List(ALU_OR,   OP1_IMZ,  OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_S,    BS_W), // CSRs[csr] <- CSRs[csr] | uext(imm_z)
-        CSRRC     -> List(ALU_OR,   OP1_NRS1, OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~x[rs1]
-        CSRRCI    -> List(ALU_OR,   OP1_IMZ,  OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~uext(imm_z)
+        CSRRC     -> List(ALU_AND,  OP1_NRS1, OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~x[rs1]
+        CSRRCI    -> List(ALU_AND,  OP1_IMZ,  OP2_CSR,  MEN_NONE,   REN_SCALAR, WB_CSR,   CSR_C,    BS_W), // CSRs[csr] <- CSRs[csr]&~uext(imm_z)
       ),
     )
 

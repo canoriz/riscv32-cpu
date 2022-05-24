@@ -35,7 +35,7 @@ dockerimage:
 
 .PRECIOUS: %.dump
 %.dump: %.elf
-	riscv64-unknown-elf-objdump -b elf32-littleriscv -d $< > $@
+	riscv64-unknown-elf-objdump -S -b elf32-littleriscv -d $< > $@
 
 %.hex: %.bin %.dump
 	od -An -tx1 -w1 -v $< > $@
@@ -43,7 +43,7 @@ dockerimage:
 instr-tests: $(INSTR_HEX)
 
 instruction-tests/%.o: instruction-tests/%.S instruction-tests/helper.h
-	riscv64-unknown-elf-gcc -O0 -march=rv32i -mabi=ilp32 -c -o $@ $<
+	riscv64-unknown-elf-gcc -g -O0 -march=rv32i -mabi=ilp32 -c -o $@ $<
 
 instruction-tests/%.elf: instruction-tests/%.o instruction-tests/link.ld
 	riscv64-unknown-elf-ld -b elf32-littleriscv -T ./instruction-tests/link.ld -o $@ $<
@@ -52,10 +52,10 @@ instruction-tests/%.elf: instruction-tests/%.o instruction-tests/link.ld
 c-tests: $(C_HEX)
 
 c-tests/cruntime0.o: c-tests/cruntime0.s
-	riscv64-unknown-elf-gcc -O0 -march=rv32i -mabi=ilp32 -c -o $@ $<
+	riscv64-unknown-elf-gcc -g -O0 -march=rv32i -mabi=ilp32 -c -o $@ $<
 
 c-tests/%.o: c-tests/%.c
-	riscv64-unknown-elf-gcc -O0 -march=rv32i -mabi=ilp32 -c -o $@ $<
+	riscv64-unknown-elf-gcc -g -O0 -march=rv32i -mabi=ilp32 -c -o $@ $<
 
 c-tests/%.elf: c-tests/%.o c-tests/link.ld c-tests/cruntime0.o
 	riscv64-unknown-elf-ld -b elf32-littleriscv -T ./c-tests/link.ld \
@@ -78,3 +78,8 @@ clean:
 	-rm -rf instruction-tests/*.bin
 	-rm -rf instruction-tests/*.hex
 	-rm -rf instruction-tests/*.dump
+	-rm -rf c-tests/*.o
+	-rm -rf c-tests/*.elf
+	-rm -rf c-tests/*.bin
+	-rm -rf c-tests/*.hex
+	-rm -rf c-tests/*.dump

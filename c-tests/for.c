@@ -4,5 +4,5 @@ int main()
     for(int i = 1; i <= 10; i++) {
         a += i;
     }
-    return a;
+    return a == 55;
 }

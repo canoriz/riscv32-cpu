@@ -3,3 +3,8 @@ instruction-tests/*.hex
 instruction-tests/*.dump
 instruction-tests/*.bin
 instruction-tests/*.elf
+*.o
+*.hex
+*.dump
+*.bin
+*.elf

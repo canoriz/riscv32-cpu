@@ -44,6 +44,13 @@ _start:
 
 	call main
 
+	mv gp, a0
+
 # forever loop is the stop instruction
+	nop
+	nop
+	nop
+	nop
+	nop
 1:
 	j 1b

@@ -16,9 +16,9 @@ class CTests extends AnyFlatSpec with ChiselScalatestTester {
     var cycle = 0
     it should s"pass ${p}" in {
       test(new Top(p)) { c =>
+        c.clock.setTimeout(0)
         while (c.io.exit.peek().litToBoolean == false) {
           c.clock.step(1)
-          cycle += 1
         }
         // instruction tests sets 1 to gp when the test passed otherwise gp represents which test case failed
         c.io.gp.expect(1.U)

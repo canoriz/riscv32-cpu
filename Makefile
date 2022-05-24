@@ -8,7 +8,7 @@ andi ori slli srli sub auipc srai add and or xor slt sltu sll sra srl fence \
 sw sh sb lh lb lhu lbu csrrw csrrwi csrrs csrrsi csrrc csrrci ecall
 INSTR_HEX := $(patsubst %, instruction-tests/%.hex, $(INSTR_TESTS))
 
-C_TESTS := for fib_recursive
+C_TESTS := for fib_recursive qsort
 C_HEX := $(patsubst %, c-tests/%.hex, $(C_TESTS))
 
 .PHONY: all test docker dockerimage clean instr-tests c-tests test

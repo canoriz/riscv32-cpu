@@ -8,7 +8,7 @@ andi ori slli srli sub auipc srai add and or xor slt sltu sll sra srl fence \
 sw sh sb lh lb lhu lbu csrrw csrrwi csrrs csrrsi csrrc csrrci ecall
 INSTR_HEX := $(patsubst %, instruction-tests/%.hex, $(INSTR_TESTS))
 
-C_TESTS := for fib_recursive qsort
+C_TESTS := for fib_recursive qsort mult
 C_HEX := $(patsubst %, c-tests/%.hex, $(C_TESTS))
 
 .PHONY: all test docker dockerimage clean instr-tests c-tests test
@@ -53,10 +53,10 @@ c-tests: $(C_HEX)
 	sbt "testOnly cpu.CTests"
 
 c-tests/cruntime0.o: c-tests/cruntime0.s
-	riscv64-unknown-elf-gcc -g -O0 -march=rv32i -mabi=ilp32 -c -o $@ $<
+	riscv64-unknown-elf-gcc -g -march=rv32i -mabi=ilp32 -c -o $@ $<
 
 c-tests/%.o: c-tests/%.c
-	riscv64-unknown-elf-gcc -g -O0 -march=rv32i -mabi=ilp32 -c -o $@ $<
+	riscv64-unknown-elf-gcc -g -march=rv32i -mabi=ilp32 -c -o $@ $<
 
 c-tests/%.elf: c-tests/%.o c-tests/link.ld c-tests/cruntime0.o
 	riscv64-unknown-elf-ld -b elf32-littleriscv -T ./c-tests/link.ld \

@@ -17,11 +17,22 @@ RUN apt-get update && \
 
 # Install RISC-V GNU toolchain
 # Note: Docker crashes with `make -j`.
-RUN git clone -b rvv-0.9.x --single-branch https://github.com/riscv/riscv-gnu-toolchain.git && \
-    cd riscv-gnu-toolchain && git checkout 5842fde8ee5bb3371643b60ed34906eff7a5fa31 && \
-    git submodule update --init --recursive && \
-    mkdir build && cd build && ../configure --prefix=${RISCV} --enable-multilib && make -j4 && \
-    cd ${RISCV} && rm -rf ${RISCV}/riscv-gnu-toolchain
+
+RUN git clone -b master --single-branch https://github.com/riscv/riscv-gnu-toolchain.git
+WORKDIR $RISCV/riscv-gnu-toolchain
+COPY github-mirror.patch $RISCV/
+RUN git checkout 2022.05.15 && \
+    mv ../github-mirror.patch ./ && git apply github-mirror.patch && \
+    git submodule update --init riscv-gcc riscv-binutils riscv-binutils
+
+RUN git submodule update --init newlib glibc
+
+RUN mkdir build && cd build && \
+    git submodule update --init && \
+    ../configure --prefix=$RISCV && make -j4
+
+WORKDIR $RISCV
+RUN rm -rf riscv-gnu-toolchain
 
 # Install Rust toolchain
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > /init-rustup.sh && \

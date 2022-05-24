@@ -1,0 +1,24 @@
+diff --git a/.gitmodules b/.gitmodules
+index 229b971..83c0abc 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -8,7 +8,7 @@
+ 	branch = riscv-gcc-10.2.0
+ [submodule "glibc"]
+ 	path = glibc
+-	url = git://sourceware.org/git/glibc.git
++	url = https://github.com/bminor/glibc.git
+ [submodule "riscv-dejagnu"]
+ 	path = riscv-dejagnu
+ 	url = https://github.com/riscv-collab/riscv-dejagnu.git
+@@ -23,8 +23,8 @@
+ 	branch = fsf-gdb-10.1-with-sim
+ [submodule "qemu"]
+ 	path = qemu
+-	url = https://git.qemu.org/git/qemu.git
++	url = https://github.com/qemu/qemu.git
+ [submodule "musl"]
+ 	path = musl
+-	url = git://git.musl-libc.org/musl
++	url = https://github.com/bminor/musl.git
+ 	branch = master

@@ -1,0 +1,28 @@
+diff --git a/.gitmodules b/.gitmodules
+index 229b971..d0fa925 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -8,14 +8,14 @@
+ 	branch = riscv-gcc-10.2.0
+ [submodule "glibc"]
+ 	path = glibc
+-	url = git://sourceware.org/git/glibc.git
++	url = https://sourceware.org/git/glibc.git
+ [submodule "riscv-dejagnu"]
+ 	path = riscv-dejagnu
+ 	url = https://github.com/riscv-collab/riscv-dejagnu.git
+ 	branch = riscv-dejagnu-1.6
+ [submodule "newlib"]
+ 	path = newlib
+-	url = git://sourceware.org/git/newlib-cygwin.git
++	url = https://sourceware.org/git/newlib-cygwin.git
+ 	branch = master
+ [submodule "riscv-gdb"]
+ 	path = riscv-gdb
+@@ -26,5 +26,5 @@
+ 	url = https://git.qemu.org/git/qemu.git
+ [submodule "musl"]
+ 	path = musl
+-	url = git://git.musl-libc.org/musl
++	url = https://git.musl-libc.org/cgit/musl
+ 	branch = master

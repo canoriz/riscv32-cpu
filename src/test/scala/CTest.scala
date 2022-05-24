@@ -8,10 +8,10 @@ import org.scalatest.flatspec.AnyFlatSpec
 import chisel3.experimental.BundleLiterals._
 import scala.io.StdIn.readLine
 
-class InstrTests extends AnyFlatSpec with ChiselScalatestTester {
-  behavior of "mycpu instruction asm test"
+class CTests extends AnyFlatSpec with ChiselScalatestTester {
+  behavior of "mycpu c test"
 
-  for (f <- new File("./instruction-tests").listFiles.filter(f => f.isFile && f.getName.endsWith(".hex"))) {
+  for (f <- new File("./c-tests").listFiles.filter(f => f.isFile && f.getName.endsWith(".hex"))) {
     val p = f.getPath
     var cycle = 0
     it should s"pass ${p}" in {

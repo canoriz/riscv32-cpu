@@ -7,7 +7,7 @@ WORKDIR $TOOLS
 RUN apt-get update && \
     apt-get install -y --no-install-recommends autoconf automake autotools-dev curl \
     python3 libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo \
-    gperf libtool patchutils bc zlib1g-dev libexpat-dev && \
+    gperf libtool patchutils bc zlib1g-dev libexpat-dev git && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 # Install RISC-V GNU toolchain.
 COPY . $TOOLS

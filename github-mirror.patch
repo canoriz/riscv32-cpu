@@ -1,8 +1,8 @@
 diff --git a/.gitmodules b/.gitmodules
-index 229b971..83c0abc 100644
+index 229b971..d5d98a6 100644
 --- a/.gitmodules
 +++ b/.gitmodules
-@@ -8,7 +8,7 @@
+@@ -8,14 +8,14 @@
  	branch = riscv-gcc-10.2.0
  [submodule "glibc"]
  	path = glibc
@@ -11,6 +11,14 @@ index 229b971..83c0abc 100644
  [submodule "riscv-dejagnu"]
  	path = riscv-dejagnu
  	url = https://github.com/riscv-collab/riscv-dejagnu.git
+ 	branch = riscv-dejagnu-1.6
+ [submodule "newlib"]
+ 	path = newlib
+-	url = git://sourceware.org/git/newlib-cygwin.git
++	url = https://github.com/bminor/newlib.git
+ 	branch = master
+ [submodule "riscv-gdb"]
+ 	path = riscv-gdb
 @@ -23,8 +23,8 @@
  	branch = fsf-gdb-10.1-with-sim
  [submodule "qemu"]

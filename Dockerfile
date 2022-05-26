@@ -1,11 +1,11 @@
 # stage 1: build toolchain
-FROM ubuntu:18.04 AS toolchain
+FROM ubuntu:22.04 AS toolchain
 ENV RISCV=/opt/riscv
 ENV TOOLS=/opt/tools
 WORKDIR $TOOLS
 # Install apt packages
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends autoconf automake autotools-dev curl \
+    apt-get install -y --no-install-recommends ca-certificates autoconf automake autotools-dev curl \
     python3 libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo \
     gperf libtool patchutils bc zlib1g-dev libexpat-dev git && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -13,8 +13,8 @@ RUN apt-get update && \
 COPY . $TOOLS
 WORKDIR $TOOLS
 RUN git submodule update --init && cd riscv-gnu-toolchain && \
+    cp ../github-mirror.patch ./ && git apply github-mirror.patch && \
     git submodule update --init && \
-    cp ../github-mirror.patch && git apply github-mirror.patch && \
     mkdir -p build && cd build && \
     ../configure --prefix=$RISCV --enable-multilib && \
     make -j$(nproc) && cd / && rm -rf ${TOOLS}

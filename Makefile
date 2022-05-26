@@ -46,8 +46,8 @@ instruction-tests/%.o: instruction-tests/%.S instruction-tests/helper.h
 	riscv64-unknown-elf-gcc -g -O0 -march=rv32i -mabi=ilp32 -c -o $@ $<
 
 instruction-tests/%.elf:  instruction-tests/link.ld instruction-tests/%.o
-	riscv64-unknown-elf-gcc -g -march=rv32i -mabi=ilp32 -o $@ \
-	-T $< $^
+	riscv64-unknown-elf-gcc -g -march=rv32i -mabi=ilp32 -nostartfiles \
+	--static -o $@ -T $^
 
 
 c-tests: $(C_HEX)
@@ -60,8 +60,8 @@ c-tests/%.o: c-tests/%.c
 	riscv64-unknown-elf-gcc -g -march=rv32i -mabi=ilp32 -c -o $@ $<
 
 c-tests/%.elf: c-tests/link.ld c-tests/%.o c-tests/cruntime0.o
-	riscv64-unknown-elf-gcc -g -march=rv32i -mabi=ilp32 -o $@ \
-	-nostartfiles -nostdlib -T $^ -lgcc
+	riscv64-unknown-elf-gcc -g -march=rv32i -mabi=ilp32 -Wl,-v -o $@ \
+	-nostartfiles --static -T $^ -lgcc
 
 
 # riscv-test from risc-v official repo

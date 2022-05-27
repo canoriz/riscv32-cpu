@@ -7,7 +7,7 @@ WORKDIR $TOOLS
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates autoconf automake autotools-dev curl \
     python3 libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo \
-    gperf libtool patchutils bc zlib1g-dev libexpat-dev git && \
+    gperf libtool patchutils bc zlib1g-dev libexpat-dev git libc6 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 # Install RISC-V GNU toolchain.
 COPY . $TOOLS
@@ -30,7 +30,7 @@ RUN apt-get update && \
     echo "deb https://repo.scala-sbt.org/scalasbt/debian /" | tee /etc/apt/sources.list.d/sbt_old.list && \
     curl -sL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89B84B2DF73499E82A75642AC823" | apt-key add && \
     apt-get update && \
-    apt-get install -y --no-install-recommends verilator git make default-jdk sbt libmpc-dev && \
+    apt-get install -y --no-install-recommends libc6 verilator git make default-jdk sbt libmpc-dev && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 CMD bash

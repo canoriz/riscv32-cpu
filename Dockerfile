@@ -20,7 +20,7 @@ RUN git submodule update --init && cd riscv-gnu-toolchain && \
     make -j$(nproc) && cd / && rm -rf ${TOOLS}
 
 # stage 2: setup
-FROM ubuntu:18.04
+FROM ubuntu:22.04
 ENV RISCV=/opt/riscv
 ENV PATH=$RISCV/bin:/root/.cargo/bin:$PATH
 COPY --from=toolchain $RISCV $RISCV

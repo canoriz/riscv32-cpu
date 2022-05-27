@@ -22,9 +22,7 @@ all:
 test: instr-tests c-tests
 
 docker:
-	docker exec -it myrvcpu bash ||\
-	docker start -i myrvcpu ||\
-	docker run -it --name myrvcpu -v $(CURRENT_DIR):/app myrvcpu
+	docker run -it --rm --name myrvcpu -v $(CURRENT_DIR):/app canoriz/riscv32-cpu
 
 dockerimage:
 	docker build . -t myrvcpu

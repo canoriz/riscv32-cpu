@@ -21,10 +21,10 @@ all:
 
 test: instr-tests c-tests
 
-docker:
+env:
 	docker exec -it myrvcpu bash ||\
 	docker start -i myrvcpu ||\
-	docker run -it --name myrvcpu -v $(CURRENT_DIR):/app myrvcpu
+	docker run -it --name myrvcpu -v $(CURRENT_DIR):/app canoriz/riscv32-cpu
 
 dockerimage:
 	docker build . -t myrvcpu
@@ -60,7 +60,7 @@ c-tests/%.o: c-tests/%.c
 	riscv64-unknown-elf-gcc -g -march=rv32i -mabi=ilp32 -c -o $@ $<
 
 c-tests/%.elf: c-tests/link.ld c-tests/%.o c-tests/cruntime0.o
-	riscv64-unknown-elf-gcc -g -march=rv32i -mabi=ilp32 -Wl,-v -o $@ \
+	riscv64-unknown-elf-gcc -g -march=rv32i -mabi=ilp32 -o $@ \
 	-nostartfiles --static -T $^ -lgcc
 
 
